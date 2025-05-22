@@ -42,14 +42,12 @@ const MapComponent: React.FC<MapComponentProps> = ({
   const mapInstanceRef = useRef<any>(null);
   const activeMarkersRef = useRef<any[]>([]);
   const [scriptsLoaded, setScriptsLoaded] = useState(false);
-  const [isMapLoading, setIsMapLoading] = useState(true); 
+  const [isMapLoading, setIsMapLoading] = useState(true);
   const [apiKeyMissingOrScriptsFailed, setApiKeyMissingOrScriptsFailed] = useState(false);
   const [mapLoadTimedOut, setMapLoadTimedOut] = useState(false);
 
 
   useEffect(() => {
-    // This log helps confirm if the key is being read from the environment at all
-    console.log("MapComponent: Initializing with Mappls API Key from env:", MAPPPLS_API_KEY ? MAPPPLS_API_KEY.substring(0, 5) + "..." : "Not found in process.env"); 
     if (!MAPPPLS_API_KEY) {
       console.error("MapComponent: Mappls API key (NEXT_PUBLIC_MAPPPLS_API_KEY) is not configured in environment variables.");
       setApiKeyMissingOrScriptsFailed(true);
@@ -98,19 +96,34 @@ const MapComponent: React.FC<MapComponentProps> = ({
     };
 
     const initializeMapSDK = async () => {
-      setIsMapLoading(true); 
+      setIsMapLoading(true);
+      console.log("MapComponent: Initializing with Mappls API Key from env:", MAPPPLS_API_KEY ? MAPPPLS_API_KEY.substring(0, 5) + "..." : "Not found");
+
+      let cssLoadedSuccessfully = false;
       try {
-        console.log("MapComponent: Attempting to load Mappls CSS with key:", MAPPPLS_API_KEY ? MAPPPLS_API_KEY.substring(0,5) + "..." : "Not found");
+        console.log("MapComponent: Attempting to load Mappls CSS with key:", MAPPPLS_API_KEY.substring(0,5) + "...");
         await loadCss(`https://apis.mappls.com/advancedmaps/api/${MAPPPLS_API_KEY}/map_sdk_css?v=3.0`, 'mappls-css');
-        console.log("MapComponent: Attempting to load Mappls SDK script with key:", MAPPPLS_API_KEY ? MAPPPLS_API_KEY.substring(0,5) + "..." : "Not found");
-        await loadScript(`https://apis.mappls.com/advancedmaps/api/${MAPPPLS_API_KEY}/map_sdk?layer=vector&v=3.0&libraries=services`, 'mappls-sdk');
-        setScriptsLoaded(true);
-        setApiKeyMissingOrScriptsFailed(false); // Ensure this is false if loaded
+        console.log("MapComponent: Mappls CSS loaded successfully.");
+        cssLoadedSuccessfully = true;
       } catch (error) {
-        console.error("MapComponent: Error loading Mappls SDK resources (CSS or JS):", error);
-        setApiKeyMissingOrScriptsFailed(true); 
+        console.error("MapComponent: Critical failure loading Mappls CSS. Map functionality will be impaired.", error);
+        setApiKeyMissingOrScriptsFailed(true); // Trigger UI error display
         setIsMapLoading(false);
-        setScriptsLoaded(false);
+        setScriptsLoaded(false); // Ensure scriptsLoaded reflects CSS failure
+        return; // Stop if CSS fails, as map won't render correctly
+      }
+
+      try {
+        console.log("MapComponent: Attempting to load Mappls SDK script (JS) with key:", MAPPPLS_API_KEY.substring(0,5) + "...");
+        await loadScript(`https://apis.mappls.com/advancedmaps/api/${MAPPPLS_API_KEY}/map_sdk?layer=vector&v=3.0&libraries=services`, 'mappls-sdk');
+        console.log("MapComponent: Mappls SDK script (JS) loaded successfully.");
+        setScriptsLoaded(true); // Both CSS and JS loaded successfully
+        setApiKeyMissingOrScriptsFailed(false); // Clear any previous script/key error state
+      } catch (error) {
+        console.error("MapComponent: Critical failure loading Mappls SDK script (JS). Map functionality will be impaired.", error);
+        setApiKeyMissingOrScriptsFailed(true); // Trigger UI error display
+        setIsMapLoading(false);
+        setScriptsLoaded(false); // JS failed, so scripts are not fully loaded
       }
     };
 
@@ -123,8 +136,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
   useEffect(() => {
     if (apiKeyMissingOrScriptsFailed || !scriptsLoaded || !mapContainerRef.current || !window.mappls || !window.mappls.Map) {
       if (scriptsLoaded && (!window.mappls || !window.mappls.Map)) {
-          console.error("MapComponent: Mappls SDK reported loaded but window.mappls.Map is not available.");
-          setApiKeyMissingOrScriptsFailed(true); 
+          console.error("MapComponent: Mappls SDK seems loaded but window.mappls.Map object is not available. This might indicate an incomplete SDK load or an issue with the Mappls library itself.");
+          setApiKeyMissingOrScriptsFailed(true);
           setIsMapLoading(false);
       }
       if (apiKeyMissingOrScriptsFailed || !scriptsLoaded) {
@@ -133,53 +146,54 @@ const MapComponent: React.FC<MapComponentProps> = ({
       return;
     }
 
-    if (mapInstanceRef.current) { 
+    if (mapInstanceRef.current) {
         mapInstanceRef.current.setCenter({lat: center.lat, lng: center.lng});
         mapInstanceRef.current.setZoom(zoom);
         return;
     }
-    
-    setIsMapLoading(true); 
-    setMapLoadTimedOut(false); 
+
+    setIsMapLoading(true);
+    setMapLoadTimedOut(false);
 
     const loadTimeoutTimer = setTimeout(() => {
-         if (mapContainerRef.current && !mapInstanceRef.current?.getCenter()) { 
-            console.error("MapComponent: Mappls map did not fully initialize within timeout period (20s).");
+         if (mapContainerRef.current && !mapInstanceRef.current?.getCenter()) {
+            console.error("MapComponent: Mappls map did not fully initialize within timeout period (20s). Possible issues: slow network, Mappls service problems, or complex map setup.");
             setIsMapLoading(false);
             setMapLoadTimedOut(true);
         }
-    }, 20000); 
+    }, 20000);
 
     try {
+      console.log("MapComponent: Attempting to initialize Mappls map instance.");
       const map = new window.mappls.Map(mapContainerRef.current, {
         center: { lat: center.lat, lng: center.lng },
         zoom: zoom,
         zoomControl: interactive,
         scrollWheelZoom: interactive,
         dragging: interactive,
-        clickableIcons: interactive, 
+        clickableIcons: interactive,
       });
       mapInstanceRef.current = map;
 
       map.on('load', () => {
         clearTimeout(loadTimeoutTimer);
-        console.log("MapComponent: Mappls map 'load' event fired.");
+        console.log("MapComponent: Mappls map 'load' event fired. Map should be visible.");
         setIsMapLoading(false);
         setMapLoadTimedOut(false);
       });
 
       map.on('error', (e: any) => {
         clearTimeout(loadTimeoutTimer);
-        console.error("MapComponent: Mappls map 'error' event fired:", e);
+        console.error("MapComponent: Mappls map instance emitted an 'error' event:", e);
         setIsMapLoading(false);
-        setMapLoadTimedOut(true); 
+        setMapLoadTimedOut(true);
       });
 
     } catch (error) {
       clearTimeout(loadTimeoutTimer);
-      console.error("MapComponent: Error initializing Mappls map instance:", error);
+      console.error("MapComponent: Exception caught during Mappls map instance initialization:", error);
       setIsMapLoading(false);
-      setMapLoadTimedOut(true); 
+      setMapLoadTimedOut(true);
     }
 
     return () => {
@@ -189,10 +203,10 @@ const MapComponent: React.FC<MapComponentProps> = ({
         activeMarkersRef.current = [];
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
-        console.log("MapComponent: Cleaned up Mappls map instance.");
+        console.log("MapComponent: Cleaned up Mappls map instance on component unmount.");
       }
     };
-  }, [scriptsLoaded, apiKeyMissingOrScriptsFailed, center, zoom, interactive]); 
+  }, [scriptsLoaded, apiKeyMissingOrScriptsFailed, center, zoom, interactive]);
 
 
   useEffect(() => {
@@ -211,9 +225,9 @@ const MapComponent: React.FC<MapComponentProps> = ({
           position: { lat: markerData.lat, lng: markerData.lng },
           map: map,
           title: markerData.label,
-          fitbounds: false, 
+          fitbounds: false,
         });
-        
+
         if (onMarkerClick) {
           mapplsMarker.on('click', () => {
             onMarkerClick(markerData.id);
@@ -233,19 +247,19 @@ const MapComponent: React.FC<MapComponentProps> = ({
             try {
               map.fitBounds(bounds, { padding: 50, duration: 500 });
             } catch (e) {
-                console.error("MapComponent: Error fitting bounds: ", e);
+                console.error("MapComponent: Error fitting bounds: ", e, ". Falling back to center and zoom.");
                 map.setCenter({lat: markers[0].lat, lng: markers[0].lng});
                 map.setZoom(zoom > 14 ? zoom : 14);
             }
-        } else if (markers.length === 1) { // Should be handled by the next block, but defensive
+        } else if (markers.length === 1) {
             map.setCenter({lat: markers[0].lat, lng: markers[0].lng});
             map.setZoom(zoom > 14 ? zoom : 14);
         }
       } else if (markers.length === 1) {
         map.setCenter({lat: markers[0].lat, lng: markers[0].lng});
-        map.setZoom(zoom > 14 ? zoom : 14); // Zoom in more for a single marker
+        map.setZoom(zoom > 14 ? zoom : 14);
       }
-    } else if (markers.length === 0 && map?.setCenter) { 
+    } else if (markers.length === 0 && map?.setCenter) {
         map.setCenter({lat: center.lat, lng: center.lng});
         map.setZoom(zoom);
     }
@@ -266,11 +280,11 @@ const MapComponent: React.FC<MapComponentProps> = ({
           <div className="mt-3 text-xs text-muted-foreground text-left bg-background/50 p-3 rounded-md border space-y-2">
             <p className="font-semibold mb-1">Troubleshooting Steps:</p>
             <ol className="list-decimal list-inside space-y-1">
-              <li><strong>Environment Variable:</strong> Ensure a file named <code className="bg-card p-0.5 rounded">.env.local</code> exists in your project's **root directory**.</li>
-              <li><strong>API Key Value:</strong> Inside <code className="bg-card p-0.5 rounded">.env.local</code>, confirm the line: <code className="bg-card p-0.5 rounded">NEXT_PUBLIC_MAPPPLS_API_KEY=YOUR_API_KEY_HERE</code> (replace <code className="bg-card p-0.5 rounded">YOUR_API_KEY_HERE</code> with your actual key, e.g., <code className="bg-card p-0.5 rounded">3f75ec6eb7d93e27fc884277be2715b3</code>).</li>
-              <li><strong>Restart Server:</strong> **Crucially, restart your Next.js development server** (e.g., via <code>npm run dev</code>) after any changes to <code className="bg-card p-0.5 rounded">.env.local</code>.</li>
-              <li><strong>Mappls Dashboard:</strong> Verify your API key is active and has permissions for "Advanced Maps SDK" on the <Link href="https://apis.mappls.com/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Mappls Dashboard</Link>. Also check if your current domain (e.g., localhost or your deployment URL) needs to be whitelisted for the key.</li>
-              <li><strong>Network & Console:</strong> Check your internet connection and look for more specific errors in your browser's Network tab (F12 Developer Tools). Try accessing the script/CSS URLs (shown in console errors) directly in your browser.</li>
+              <li><strong>Environment Variable File:</strong> Ensure a file named <code className="bg-card p-0.5 rounded">.env.local</code> exists in your project's **absolute root directory** (same level as <code>package.json</code>).</li>
+              <li><strong>API Key Value:</strong> Inside <code className="bg-card p-0.5 rounded">.env.local</code>, confirm the line: <code className="bg-card p-0.5 rounded">NEXT_PUBLIC_MAPPPLS_API_KEY=YOUR_API_KEY_HERE</code> (e.g., <code className="bg-card p-0.5 rounded">3f75ec6eb7d93e27fc884277be2715b3</code>). Ensure no extra spaces or quotes.</li>
+              <li><strong>Restart Server:</strong> **CRITICAL STEP:** After creating or modifying <code className="bg-card p-0.5 rounded">.env.local</code>, you **MUST** restart your Next.js development server (e.g., stop with Ctrl+C, then run <code>npm run dev</code>).</li>
+              <li><strong>Mappls Dashboard:</strong> Verify your API key is active and has permissions for "Advanced Maps SDK" on the <Link href="https://apis.mappls.com/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Mappls Dashboard</Link>. Check if your domain (e.g., <code>localhost</code> or your deployment URL) needs to be whitelisted.</li>
+              <li><strong>Network & Browser Console:</strong> Check your internet connection and look for more specific errors in your browser's Network tab (F12 Developer Tools). Try accessing the script/CSS URLs (which might be shown in console errors from previous attempts) directly in your browser.</li>
             </ol>
             <p className="mt-2">For details on Next.js environment variables, see the <Link href="https://nextjs.org/docs/app/building-your-application/configuring/environment-variables" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Next.js Documentation</Link>.</p>
           </div>
@@ -300,5 +314,3 @@ const MapComponent: React.FC<MapComponentProps> = ({
 };
 
 export default MapComponent;
-    
-    
