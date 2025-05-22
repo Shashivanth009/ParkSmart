@@ -1,3 +1,4 @@
+
 "use client";
 import { useEffect, useState } from 'react';
 import type { Booking } from '@/types';
@@ -20,7 +21,7 @@ const mockBookings: Booking[] = [
 
 const BookingStatusBadge = ({ status }: { status: Booking['status'] }) => {
   let VIcon = CheckCircle2;
-  let color = "bg-green-500/20 text-green-400 border-green-500/30";
+  let color = "bg-green-500/20 text-green-400 border-green-500/30"; // completed
   if (status === 'upcoming') { VIcon = CalendarDays; color = "bg-blue-500/20 text-blue-400 border-blue-500/30"; }
   else if (status === 'active') { VIcon = Clock; color = "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"; }
   else if (status === 'cancelled') { VIcon = Ban; color = "bg-red-500/20 text-red-400 border-red-500/30"; }
@@ -77,6 +78,7 @@ export default function BookingsPage() {
 
   const filteredBookings = (status: Booking['status'] | 'all') => {
     if (status === 'all') return bookings;
+    if (status === 'completed') return bookings.filter(b => b.status === 'completed' || b.status === 'cancelled');
     return bookings.filter(b => b.status === status);
   };
   
@@ -85,12 +87,12 @@ export default function BookingsPage() {
     if (isLoading) return <p className="text-center py-8">Loading bookings...</p>;
     if (currentBookings.length === 0) {
          return (
-            <div className="text-center py-10 text-muted-foreground">
-                <AlertTriangle className="mx-auto h-12 w-12 mb-4 text-gray-500" />
-                <p className="text-lg font-medium">No {title.toLowerCase()} bookings found.</p>
-                <p className="text-sm">Looks like there's nothing here yet!</p>
-                {status !== 'completed' && status !== 'cancelled' && (
-                    <Button asChild className="mt-4"><Link href="/search">Find Parking</Link></Button>
+            <div className="text-center py-10 text-muted-foreground bg-card rounded-lg shadow p-6">
+                <AlertTriangle className="mx-auto h-12 w-12 mb-4 text-accent" />
+                <p className="text-lg font-medium text-foreground">No {title.toLowerCase()} bookings found.</p>
+                <p className="text-sm mb-4">Looks like there's nothing here yet!</p>
+                {(status === 'all' || status === 'upcoming' || status === 'active') && (
+                    <Button asChild className="mt-2"><Link href="/search">Find Parking</Link></Button>
                 )}
             </div>
         );
@@ -122,3 +124,4 @@ export default function BookingsPage() {
     </div>
   );
 }
+

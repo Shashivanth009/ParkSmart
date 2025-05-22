@@ -179,7 +179,9 @@ const MapComponent: React.FC<MapComponentProps> = ({
         } catch (e) {
             console.warn("MapComponent: Error updating existing map instance:", e);
         }
-        return; // Don't reinitialize
+        // Map already initialized, ensure loading is false if it was stuck
+        if (isMapLoading) setIsMapLoading(false);
+        return; 
     }
     
 
@@ -203,8 +205,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
         mapId: "GOMAPS_PRO_MAP_ID", // A generic ID or one specific to GoMaps Pro if they use map IDs
         disableDefaultUI: !interactive,
         zoomControl: interactive,
-        streetViewControl: interactive, // May or may not be supported by GoMaps Pro
-        mapTypeControl: interactive,   // May or may not be supported by GoMaps Pro
+        streetViewControl: interactive, 
+        mapTypeControl: interactive,   
         fullscreenControl: interactive,
         scrollwheel: interactive,
         gestureHandling: interactive ? 'auto' : 'none',
@@ -221,25 +223,30 @@ const MapComponent: React.FC<MapComponentProps> = ({
         tilesLoadedListener = null;
       };
       
-      idleListener = map.addListener('idle', () => {
+      const onMapReady = () => {
         clearTimeout(loadTimeoutTimer);
-        console.log("MapComponent: Map 'idle' event fired. Map should be visible and ready.");
         if(isMapLoading){ 
             setIsMapLoading(false);
         }
         setMapLoadTimedOut(false); 
+      };
+
+      idleListener = map.addListener('idle', () => {
+        console.log("MapComponent: Map 'idle' event fired. Map should be visible and ready.");
+        onMapReady();
       });
 
       tilesLoadedListener = map.addListener('tilesloaded', () => {
-        clearTimeout(loadTimeoutTimer); 
-        if (isMapLoading) { 
-            console.log("MapComponent: Map 'tilesloaded' event fired.");
-            setIsMapLoading(false);
-        }
-        setMapLoadTimedOut(false);
+        console.log("MapComponent: Map 'tilesloaded' event fired.");
+        onMapReady();
       });
       
-      // Ensure listeners and timeout are cleaned up if component unmounts
+      // Fallback in case neither idle nor tilesloaded fire quickly for some reason with GoMaps Pro
+      // after basic map object creation.
+      if (map.getCenter()) { // Basic check that map object exists
+          setTimeout(onMapReady, 500); // Give it a slight delay for rendering
+      }
+
       return () => {
         cleanupListeners();
         clearTimeout(loadTimeoutTimer);
@@ -258,7 +265,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
     }
 
   // Dependencies for map initialization
-  }, [scriptsLoaded, apiKeyMissingOrScriptsFailed, center, zoom, interactive, isMapLoading]);
+  }, [scriptsLoaded, apiKeyMissingOrScriptsFailed, center, zoom, interactive]);
 
 
   useEffect(() => {
@@ -286,8 +293,6 @@ const MapComponent: React.FC<MapComponentProps> = ({
           position: { lat: markerData.lat, lng: markerData.lng },
           map: map,
           title: markerData.label,
-          // GoMaps Pro might have different styling options for AdvancedMarkerElement.
-          // Check their documentation if default Google styling isn't desired or working.
         });
 
         if (onMarkerClick) {
@@ -301,31 +306,27 @@ const MapComponent: React.FC<MapComponentProps> = ({
       }
     });
 
-    // Adjust map bounds or center based on markers
     if (markers.length > 0 && interactive) {
       if (markers.length > 1) {
         const bounds = new window.google.maps.LatLngBounds();
         markers.forEach(m => bounds.extend({ lat: m.lat, lng: m.lng }));
         try {
           map.fitBounds(bounds);
-          // Prevent over-zooming if bounds are very tight
           const listener = google.maps.event.addListenerOnce(map, 'idle', () => {
              if (map.getZoom() && map.getZoom()! > 16) map.setZoom(16); 
           });
         } catch (e) {
           console.error("MapComponent: Error fitting bounds for GoMaps Pro: ", e);
-          // Fallback if fitBounds fails
           if (markers[0]) {
             map.setCenter({ lat: markers[0].lat, lng: markers[0].lng });
-            map.setZoom(zoom > 14 ? zoom : 14); // Sensible default zoom
+            map.setZoom(zoom > 14 ? zoom : 14); 
           }
         }
       } else if (markers.length === 1 && markers[0]) {
         map.setCenter({ lat: markers[0].lat, lng: markers[0].lng });
-        map.setZoom(zoom > 14 ? zoom : 14); // Zoom in on single marker
+        map.setZoom(zoom > 14 ? zoom : 14); 
       }
     } else if (markers.length === 0 && map?.setCenter) {
-       // No markers, set to default center and zoom
        try {
         map.setCenter(center);
         map.setZoom(zoom);
@@ -351,7 +352,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
             <p className="font-semibold mb-1">Troubleshooting Steps:</p>
             <ol className="list-decimal list-inside space-y-1">
               <li><strong>Environment Variable File:</strong> Ensure a file named <code className="bg-card p-0.5 rounded">.env.local</code> exists in your project's **absolute root directory** (same level as <code>package.json</code>).</li>
-              <li><strong>API Key Value:</strong> Inside <code className="bg-card p-0.5 rounded">.env.local</code>, confirm the line: <code className="bg-card p-0.5 rounded">NEXT_PUBLIC_GOMAPS_PRO_API_KEY=YOUR_API_KEY_HERE</code>. Ensure no extra spaces or quotes.</li>
+              <li><strong>API Key Value:</strong> Inside <code className="bg-card p-0.5 rounded">.env.local</code>, confirm the line: <code className="bg-card p-0.5 rounded">NEXT_PUBLIC_GOMAPS_PRO_API_KEY=YOUR_API_KEY_HERE</code> (replace with your actual key, e.g., AlzaSyxap6A_EcHW72khGw8I6awbRRUcv8sYmbG).</li>
               <li><strong>Restart Server:</strong> **CRITICAL STEP:** After creating or modifying <code className="bg-card p-0.5 rounded">.env.local</code>, you **MUST** restart your Next.js development server (e.g., stop with Ctrl+C, then run <code>npm run dev</code>).</li>
               <li><strong>API Key Provider Dashboard:</strong> 
                 If using a GoMaps Pro key, verify its status and permissions on the GoMaps Pro Dashboard.
