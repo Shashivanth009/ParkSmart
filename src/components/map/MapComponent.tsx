@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { MapPin, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import Link from 'next/link'; // Import Link for the anchor tag
 
 // Declare Mappls global object for TypeScript
 declare global {
@@ -226,7 +227,13 @@ const MapComponent: React.FC<MapComponentProps> = ({
           <MapPin className="w-12 h-12 text-destructive mx-auto mb-2 icon-glow" />
           <h3 className="text-lg font-semibold">Map Unavailable</h3>
           <p className="text-sm text-muted-foreground">Mappls API key is not configured.</p>
-          <p className="text-xs text-muted-foreground mt-2">Please set the <code className="bg-card p-1 rounded text-xs">NEXT_PUBLIC_MAPPPLS_API_KEY</code> environment variable.</p>
+          <p className="text-xs text-muted-foreground mt-2">
+            Please set the <code className="bg-card p-1 rounded text-xs">NEXT_PUBLIC_MAPPPLS_API_KEY</code> environment variable.
+            <br />
+            <Link href="https://nextjs.org/docs/app/building-your-application/configuring/environment-variables" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+              Learn how to set environment variables in Next.js
+            </Link>
+          </p>
         </CardContent>
       </Card>
     );
@@ -246,5 +253,4 @@ const MapComponent: React.FC<MapComponentProps> = ({
 };
 
 export default MapComponent;
-
     
