@@ -42,12 +42,13 @@ const MapComponent: React.FC<MapComponentProps> = ({
   const mapInstanceRef = useRef<any>(null);
   const activeMarkersRef = useRef<any[]>([]);
   const [scriptsLoaded, setScriptsLoaded] = useState(false);
-  const [isMapLoading, setIsMapLoading] = useState(true); // True when attempting to load scripts OR initialize map
+  const [isMapLoading, setIsMapLoading] = useState(true); 
   const [apiKeyMissingOrScriptsFailed, setApiKeyMissingOrScriptsFailed] = useState(false);
   const [mapLoadTimedOut, setMapLoadTimedOut] = useState(false);
 
 
   useEffect(() => {
+    console.log("Attempting to use Mappls API Key for SDK loading:", MAPPPLS_API_KEY ? MAPPPLS_API_KEY.substring(0, 5) + "..." : "Not found"); // Log the key (or part of it)
     if (!MAPPPLS_API_KEY) {
       console.error("Mappls API key is not configured. Please set NEXT_PUBLIC_MAPPPLS_API_KEY environment variable.");
       setApiKeyMissingOrScriptsFailed(true);
@@ -90,15 +91,14 @@ const MapComponent: React.FC<MapComponentProps> = ({
     };
 
     const initializeMapSDK = async () => {
-      setIsMapLoading(true); // Indicate script loading process
+      setIsMapLoading(true); 
       try {
         await loadCss(`https://apis.mappls.com/advancedmaps/api/${MAPPPLS_API_KEY}/map_sdk_css?v=3.0`, 'mappls-css');
         await loadScript(`https://apis.mappls.com/advancedmaps/api/${MAPPPLS_API_KEY}/map_sdk?layer=vector&v=3.0&libraries=services`, 'mappls-sdk');
         setScriptsLoaded(true);
-        // setIsMapLoading(false); // Map itself is not yet loaded, only scripts. isMapLoading true until map.on('load')
       } catch (error) {
-        console.error("Error loading Mappls SDK:", error);
-        setApiKeyMissingOrScriptsFailed(true); // Treat script load failure as a critical issue
+        console.error("Error loading Mappls SDK resources:", error);
+        setApiKeyMissingOrScriptsFailed(true); 
         setIsMapLoading(false);
         setScriptsLoaded(false);
       }
@@ -113,9 +113,12 @@ const MapComponent: React.FC<MapComponentProps> = ({
   useEffect(() => {
     if (apiKeyMissingOrScriptsFailed || !scriptsLoaded || !mapContainerRef.current || !window.mappls || !window.mappls.Map) {
       if (scriptsLoaded && (!window.mappls || !window.mappls.Map)) {
-          // Scripts reported loaded, but Mappls object not available (should be rare if scriptsLoaded is true)
-          console.error("Mappls SDK loaded but window.mappls.Map is not available.");
-          setApiKeyMissingOrScriptsFailed(true); // Fallback to error state
+          console.error("Mappls SDK reported loaded but window.mappls.Map is not available.");
+          setApiKeyMissingOrScriptsFailed(true); 
+          setIsMapLoading(false);
+      }
+      // Ensure map loading is false if we can't proceed
+      if (apiKeyMissingOrScriptsFailed || !scriptsLoaded) {
           setIsMapLoading(false);
       }
       return;
@@ -127,19 +130,16 @@ const MapComponent: React.FC<MapComponentProps> = ({
         return;
     }
     
-    setIsMapLoading(true); // Now truly for map initialization
+    setIsMapLoading(true); 
     setMapLoadTimedOut(false); 
 
     const loadTimeoutTimer = setTimeout(() => {
-        // Check if the map has loaded; Mappls SDK doesn't have a simple map.loaded() like some other SDKs prior to map instance.
-        // We rely on the 'load' event. If it hasn't fired, mapInstanceRef.current might exist but not be fully "ready".
-        // If map instance exists AND its 'load' event hasn't cleared this timer, consider it timed out.
-         if (mapContainerRef.current && !mapInstanceRef.current?.getCenter()) { // getCenter is a basic check if map is usable
+         if (mapContainerRef.current && !mapInstanceRef.current?.getCenter()) { 
             console.error("Mappls map did not fully initialize within timeout period.");
             setIsMapLoading(false);
             setMapLoadTimedOut(true);
         }
-    }, 20000); // 20 seconds timeout
+    }, 20000); 
 
     try {
       const map = new window.mappls.Map(mapContainerRef.current, {
@@ -163,7 +163,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
         clearTimeout(loadTimeoutTimer);
         console.error("Mappls map error:", e);
         setIsMapLoading(false);
-        setMapLoadTimedOut(true); // Treat map error as a load failure for UI
+        setMapLoadTimedOut(true); 
       });
 
     } catch (error) {
@@ -182,11 +182,10 @@ const MapComponent: React.FC<MapComponentProps> = ({
         mapInstanceRef.current = null;
       }
     };
-  }, [scriptsLoaded, apiKeyMissingOrScriptsFailed, center, zoom, interactive]); // Removed isMapLoading from deps
+  }, [scriptsLoaded, apiKeyMissingOrScriptsFailed, center, zoom, interactive]); 
 
 
   useEffect(() => {
-    // This effect should only run if map is initialized and not in an error state
     if (apiKeyMissingOrScriptsFailed || !scriptsLoaded || !mapInstanceRef.current || !window.mappls || isMapLoading || mapLoadTimedOut) {
       return;
     }
@@ -236,7 +235,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
         map.setCenter({lat: markers[0].lat, lng: markers[0].lng});
         map.setZoom(zoom > 14 ? zoom : 14);
       }
-    } else if (markers.length === 0 && map?.setCenter) { // Check if map exists before calling setCenter
+    } else if (markers.length === 0 && map?.setCenter) { 
         map.setCenter({lat: center.lat, lng: center.lng});
         map.setZoom(zoom);
     }
@@ -251,26 +250,19 @@ const MapComponent: React.FC<MapComponentProps> = ({
           <AlertTriangle className="w-12 h-12 text-destructive mx-auto mb-3" />
           <h3 className="text-lg font-semibold text-destructive">Map Configuration or Loading Error</h3>
           <p className="text-sm text-muted-foreground mt-1">
-            The Mappls API key (<code>NEXT_PUBLIC_MAPPPLS_API_KEY</code>) is missing, not configured correctly,
-            or the map scripts could not be loaded.
+            The Mappls API key (<code>NEXT_PUBLIC_MAPPPLS_API_KEY</code>) might be missing, incorrectly configured in your <code>.env.local</code> file,
+            or the map scripts/styles could not be loaded from Mappls servers. This can happen due to network issues, an invalid API key, or incorrect API key permissions on the Mappls dashboard.
           </p>
           <div className="mt-3 text-xs text-muted-foreground text-left bg-background/50 p-3 rounded-md border space-y-2">
-            <p className="font-semibold mb-1">Please ensure the following:</p>
+            <p className="font-semibold mb-1">Troubleshooting Steps:</p>
             <ol className="list-decimal list-inside space-y-1">
-              <li>A file named <code className="bg-card p-0.5 rounded">.env.local</code> exists in your project's root directory.</li>
-              <li>It contains the line: <code className="bg-card p-0.5 rounded">NEXT_PUBLIC_MAPPPLS_API_KEY=YOUR_API_KEY_HERE</code> (with your actual key).</li>
-              <li>You have **restarted your Next.js development server** after changes to <code className="bg-card p-0.5 rounded">.env.local</code>.</li>
+              <li><strong>Environment Variable:</strong> Ensure a file named <code className="bg-card p-0.5 rounded">.env.local</code> exists in your project's **root directory**.</li>
+              <li><strong>API Key:</strong> Inside <code className="bg-card p-0.5 rounded">.env.local</code>, confirm the line: <code className="bg-card p-0.5 rounded">NEXT_PUBLIC_MAPPPLS_API_KEY=YOUR_API_KEY_HERE</code> (replace <code className="bg-card p-0.5 rounded">YOUR_API_KEY_HERE</code> with your actual key <code className="bg-card p-0.5 rounded">3f75ec6eb7d93e27fc884277be2715b3</code>).</li>
+              <li><strong>Restart Server:</strong> **Crucially, restart your Next.js development server** after any changes to <code className="bg-card p-0.5 rounded">.env.local</code>.</li>
+              <li><strong>Mappls Dashboard:</strong> Verify your API key is active and has permissions for "Advanced Maps SDK" on the <Link href="https://apis.mappls.com/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Mappls Dashboard</Link>.</li>
+              <li><strong>Network & Console:</strong> Check your internet connection and look for more specific errors in your browser's Network tab (F12). Try accessing the script/CSS URLs directly.</li>
             </ol>
-            <p className="mt-2">
-              If the API key is set and you recently restarted, also check:
-              <ul className="list-disc list-inside pl-4 space-y-0.5">
-                <li>Your internet connection.</li>
-                <li>Browser console for more specific errors (e.g., network issues, Mappls server errors).</li>
-                <li>The API key is valid and has permissions on the Mappls dashboard.</li>
-                <li>No browser extensions are blocking scripts from <code>apis.mappls.com</code>.</li>
-              </ul>
-            </p>
-             <p className="mt-2">For more details on environment variables, see the <Link href="https://nextjs.org/docs/app/building-your-application/configuring/environment-variables" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Next.js Documentation</Link>.</p>
+            <p className="mt-2">For details on Next.js environment variables, see the <Link href="https://nextjs.org/docs/app/building-your-application/configuring/environment-variables" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Next.js Documentation</Link>.</p>
           </div>
         </CardContent>
       </Card>
@@ -290,7 +282,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
         <div className="absolute inset-0 bg-background/90 flex flex-col items-center justify-center z-10 p-4 text-center">
           <AlertTriangle className="w-10 h-10 text-destructive mb-2" />
           <p className="text-md font-semibold text-destructive">Map Timed Out or Failed to Load</p>
-          <p className="text-sm text-muted-foreground">The map took too long to load or encountered an error. Please check your internet connection, ensure the API key is correct and active, or try again later.</p>
+          <p className="text-sm text-muted-foreground">The map took too long to load or encountered an error. Please check your internet connection, ensure the API key is correct and active on the Mappls dashboard, or try again later.</p>
         </div>
       )}
     </Card>
@@ -299,4 +291,5 @@ const MapComponent: React.FC<MapComponentProps> = ({
 
 export default MapComponent;
 
+    
     
