@@ -11,6 +11,7 @@ import { Header } from '@/components/core/Header';
 import { Footer } from '@/components/core/Footer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'; // Added Card and related imports
 import { Search as SearchIcon, ListFilter, Map, Loader2, AlertTriangle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
