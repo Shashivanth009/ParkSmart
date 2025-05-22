@@ -1,8 +1,8 @@
 
-"use client"; 
+"use client";
 
-import { useState, useRef, useCallback } from 'react'; // Added useRef, useCallback
-import { useRouter } from 'next/navigation'; 
+import { useState, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { Header } from '@/components/core/Header';
 import { Footer } from '@/components/core/Footer';
 import MapComponent from '@/components/map/MapComponent';
@@ -15,34 +15,50 @@ import Image from 'next/image';
 import type { ParkingSpace } from '@/types';
 
 const mockFeaturedSpaces: ParkingSpace[] = [
-  { id: 'ps1', name: 'Charminar Parking Plaza', address: 'Near Charminar, Hyderabad', availability: 'high', pricePerHour: 2.5, features: ['covered', 'ev-charging', 'cctv'], coordinates: { lat: 17.3616, lng: 78.4747 }, rating: 4.5, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 50, totalSpots: 100 },
-  { id: 'ps2', name: 'Hitech City Secure Park', address: 'Mindspace Circle, Hyderabad', availability: 'medium', pricePerHour: 3.0, features: ['cctv', 'secure'], coordinates: { lat: 17.4474, lng: 78.3762 }, rating: 4.2, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 20, totalSpots: 80 },
-  { id: 'ps3', name: 'Gachibowli Stadium Lot', address: 'Old Mumbai Hwy, Hyderabad', availability: 'low', pricePerHour: 1.8, features: ['covered', 'secure', 'well-lit'], coordinates: { lat: 17.4417, lng: 78.3498 }, rating: 4.0, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 5, totalSpots: 150 },
+  { id: 'ps1', name: 'Charminar Parking Plaza', address: 'Near Charminar, Hyderabad', availability: 'high', pricePerHour: 2.5, features: ['covered', 'ev-charging', 'cctv'], coordinates: { lat: 17.3616, lng: 78.4747 }, rating: 4.5, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 50, totalSpots: 100, dataAiHint: "parking garage building" },
+  { id: 'ps2', name: 'Hitech City Secure Park', address: 'Mindspace Circle, Hyderabad', availability: 'medium', pricePerHour: 3.0, features: ['cctv', 'secure'], coordinates: { lat: 17.4474, lng: 78.3762 }, rating: 4.2, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 20, totalSpots: 80, dataAiHint: "parking garage building" },
+  { id: 'ps3', name: 'Gachibowli Stadium Lot', address: 'Old Mumbai Hwy, Hyderabad', availability: 'low', pricePerHour: 1.8, features: ['covered', 'secure', 'well-lit'], coordinates: { lat: 17.4417, lng: 78.3498 }, rating: 4.0, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 5, totalSpots: 150, dataAiHint: "parking garage building" },
 ];
 
 const INITIAL_HOMEPAGE_MAP_CENTER = { lat: 17.3850, lng: 78.4867 }; // Hyderabad
 
 export default function HomePage() {
-  const [searchQuery, setSearchQuery] = useState(''); 
-  const router = useRouter(); 
+  const [searchQuery, setSearchQuery] = useState('');
+  const router = useRouter();
   const heroSearchInputRef = useRef<HTMLInputElement>(null);
   const [mapCenter, setMapCenter] = useState(INITIAL_HOMEPAGE_MAP_CENTER);
+  const [userInteractedWithMap, setUserInteractedWithMap] = useState(false);
 
   const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    let navUrl = '/search';
+    const queryParams = new URLSearchParams();
+
     if (searchQuery.trim()) {
-      router.push(`/search?location=${encodeURIComponent(searchQuery.trim())}`);
-    } else {
-      router.push('/search'); 
+      queryParams.set('location', searchQuery.trim());
     }
+
+    if (userInteractedWithMap) { // If user selected a specific place on the map
+      queryParams.set('lat', mapCenter.lat.toString());
+      queryParams.set('lng', mapCenter.lng.toString());
+      queryParams.set('radius', '2'); // Default to 2km radius for map-initiated search from homepage
+    }
+
+    if (queryParams.toString()) {
+      navUrl += `?${queryParams.toString()}`;
+    }
+    router.push(navUrl);
   };
 
   const handlePlaceSelected = useCallback((place: google.maps.places.PlaceResult) => {
     if (place.geometry?.location) {
       const newCenter = { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() };
       setMapCenter(newCenter);
+      setUserInteractedWithMap(true);
       if (place.name) {
-        setSearchQuery(place.name); // Update search query with selected place name
+        setSearchQuery(place.name);
+      } else if (place.formatted_address) {
+        setSearchQuery(place.formatted_address);
       }
     }
   }, []);
@@ -62,8 +78,8 @@ export default function HomePage() {
             <p className="mt-4 md:mt-6 max-w-2xl mx-auto text-lg md:text-xl text-muted-foreground">
               Find, book, and pay for parking in just a few clicks. ParkSmart makes urban mobility easier.
             </p>
-            <form 
-              onSubmit={handleSearchSubmit} 
+            <form
+              onSubmit={handleSearchSubmit}
               className="mt-8 md:mt-10 max-w-xl mx-auto flex flex-col sm:flex-row items-center gap-3 p-2 bg-card rounded-lg shadow-xl"
             >
               <div className="relative w-full">
@@ -74,8 +90,11 @@ export default function HomePage() {
                   placeholder="Enter location, e.g., 'Hitech City, Hyderabad'"
                   className="pl-10 pr-4 py-3 h-12 text-base w-full"
                   aria-label="Search for parking"
-                  value={searchQuery} 
-                  onChange={(e) => setSearchQuery(e.target.value)} 
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setUserInteractedWithMap(false); // Reset map interaction if user types manually
+                  }}
                 />
               </div>
               <Button type="submit" size="lg" className="w-full sm:w-auto h-12 shrink-0">
@@ -89,17 +108,17 @@ export default function HomePage() {
         <section className="py-12 md:py-16 bg-background">
           <div className="container mx-auto px-4 md:px-6">
             <h2 className="text-3xl font-bold text-center mb-8 md:mb-12 text-foreground">
-              Parking Availability Near You
+              Explore Parking Availability
             </h2>
-            <MapComponent 
+            <MapComponent
               markers={mockFeaturedSpaces.map(s => ({ id: s.id, lat: s.coordinates.lat, lng: s.coordinates.lng, label: s.name }))}
-              center={mapCenter} 
-              interactive={true} 
-              showMyLocationButton={true} 
+              center={mapCenter}
+              interactive={true}
+              showMyLocationButton={true}
               className="rounded-xl shadow-2xl"
               onMarkerClick={(id) => router.push(`/booking/${id}`)}
-              autocompleteInputRef={heroSearchInputRef} // Connect hero search to map autocomplete
-              onPlaceSelected={handlePlaceSelected} // Handle place selection from hero search
+              autocompleteInputRef={heroSearchInputRef}
+              onPlaceSelected={handlePlaceSelected}
             />
             <div className="text-center mt-8">
               <Button size="lg" asChild>
@@ -115,7 +134,7 @@ export default function HomePage() {
             <h2 className="text-3xl font-bold text-center mb-8 md:mb-12 text-foreground">How ParkSmart Works</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
               {[
-                { icon: Search, title: "Search", description: "Enter your destination and find available parking spots nearby with real-time data." },
+                { icon: Search, title: "Search", description: "Enter your destination and find available parking spots generated by our AI." },
                 { icon: CalendarCheck, title: "Book", description: "Select your preferred spot, choose your duration, and book instantly." },
                 { icon: Car, title: "Park", description: "Navigate to your booked spot with in-app guidance and enjoy hassle-free parking." },
               ].map((step, index) => (
@@ -141,7 +160,7 @@ export default function HomePage() {
             <h2 className="text-3xl font-bold text-center mb-8 md:mb-12 text-foreground">Why Choose ParkSmart?</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
               {[
-                { icon: Clock, title: "Real-Time Availability", description: "See live updates on parking space availability before you arrive." },
+                { icon: Clock, title: "AI-Powered Suggestions", description: "Get dynamically generated parking spot suggestions based on your query." },
                 { icon: Star, title: "Favorite Locations", description: "Save your frequently visited parking spots for quick access." },
                 { icon: ShieldCheck, title: "Secure Payments", description: "Multiple secure payment options with saved methods for convenience." },
                 { icon: Zap, title: "EV Charging Spots", description: "Easily find and book parking spots with EV charging facilities." },
@@ -169,13 +188,13 @@ export default function HomePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
               {mockFeaturedSpaces.map(space => (
                 <Card key={space.id} className="overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300">
-                  <Image 
-                    src={space.imageUrl!} 
-                    alt={space.name} 
-                    width={600} 
-                    height={400} 
-                    className="w-full h-48 object-cover" 
-                    data-ai-hint="parking garage building" />
+                  <Image
+                    src={space.imageUrl!}
+                    alt={space.name}
+                    width={600}
+                    height={400}
+                    className="w-full h-48 object-cover"
+                    data-ai-hint={space.dataAiHint || "parking garage building"} />
                   <CardHeader>
                     <CardTitle>{space.name}</CardTitle>
                     <CardDescription>{space.address}</CardDescription>
@@ -204,3 +223,4 @@ export default function HomePage() {
   );
 }
 
+    
