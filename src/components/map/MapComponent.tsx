@@ -2,7 +2,7 @@
 "use client";
 import React, { useEffect, useRef, useState } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
-import { MapPin, Loader2 } from "lucide-react";
+import { MapPin, Loader2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from 'next/link'; // Import Link for the anchor tag
 
@@ -222,18 +222,22 @@ const MapComponent: React.FC<MapComponentProps> = ({
 
   if (apiKeyMissing) {
     return (
-      <Card className={cn("flex items-center justify-center aspect-video bg-muted/50", className)} data-ai-hint="map error state">
+      <Card className={cn("flex items-center justify-center aspect-video bg-muted/50 border-destructive/50", className)} data-ai-hint="map error state">
         <CardContent className="text-center p-4">
-          <MapPin className="w-12 h-12 text-destructive mx-auto mb-2 icon-glow" />
-          <h3 className="text-lg font-semibold">Map Unavailable</h3>
-          <p className="text-sm text-muted-foreground">Mappls API key is not configured.</p>
-          <p className="text-xs text-muted-foreground mt-2">
-            Please set the <code className="bg-card p-1 rounded text-xs">NEXT_PUBLIC_MAPPPLS_API_KEY</code> environment variable.
-            <br />
-            <Link href="https://nextjs.org/docs/app/building-your-application/configuring/environment-variables" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-              Learn how to set environment variables in Next.js
-            </Link>
+          <AlertTriangle className="w-12 h-12 text-destructive mx-auto mb-3" />
+          <h3 className="text-lg font-semibold text-destructive">Map Configuration Error</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            The Mappls API key (<code>NEXT_PUBLIC_MAPPPLS_API_KEY</code>) is missing or not configured correctly.
           </p>
+          <div className="mt-3 text-xs text-muted-foreground text-left bg-background/50 p-3 rounded-md border">
+            <p className="font-semibold mb-1">To fix this:</p>
+            <ol className="list-decimal list-inside space-y-1">
+              <li>Create a file named <code className="bg-card p-0.5 rounded">.env.local</code> in your project's root directory (next to <code className="bg-card p-0.5 rounded">package.json</code>).</li>
+              <li>Add the line: <code className="bg-card p-0.5 rounded">NEXT_PUBLIC_MAPPPLS_API_KEY=YOUR_API_KEY_HERE</code> (replace with your actual key).</li>
+              <li><strong>Important: Restart your Next.js development server</strong> (stop it with Ctrl+C and run `npm run dev` again).</li>
+            </ol>
+             <p className="mt-2">For more details, see the <Link href="https://nextjs.org/docs/app/building-your-application/configuring/environment-variables" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Next.js Environment Variables documentation</Link>.</p>
+          </div>
         </CardContent>
       </Card>
     );
