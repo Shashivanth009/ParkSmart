@@ -1,7 +1,7 @@
 "use client";
 import { useAuth } from '@/hooks/useAuth';
 import { PageTitle } from '@/components/core/PageTitle';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { BookMarked, Star, CreditCard, User, MapPin, Clock, AlertTriangle } from 'lucide-react';
