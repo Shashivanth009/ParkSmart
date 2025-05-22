@@ -1,3 +1,4 @@
+
 import { AppLogo } from './AppLogo';
 import { AuthButtons } from '@/components/auth/AuthButtons';
 import { Button } from '@/components/ui/button';
@@ -16,7 +17,7 @@ export function Header() {
           <Link href="/#how-it-works" className="text-muted-foreground transition-colors hover:text-foreground">
             How It Works
           </Link>
-          <Link href="/#features" className="text-muted-foreground transition-colors hover:text-foreground">
+          <Link href="/features" className="text-muted-foreground transition-colors hover:text-foreground">
             Features
           </Link>
         </nav>
@@ -33,3 +34,5 @@ export function Header() {
     </header>
   );
 }
+
+    
