@@ -129,7 +129,7 @@ function SearchPageComponent() {
         setRawAiSpaces([]); // Clear results if search was attempted with no criteria
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, activeSearchCenter, userSetFilters, radiusOverride, searchAttempted]);
+  }, [searchQuery, activeSearchCenter, userSetFilters, radiusOverride, searchAttempted, performAiSearch]);
 
 
   useEffect(() => {
@@ -251,7 +251,7 @@ function SearchPageComponent() {
                 center={mapCenterForView}
                 onMarkerClick={handleMarkerClick}
                 interactive={true}
-                showSearchInput={true} 
+                showSearchInput={false} 
                 autocompleteInputRef={mainSearchInputRef}
                 showMyLocationButton={true}
                 onPlaceSelected={handlePlaceSelectedOnMapOrInput}
