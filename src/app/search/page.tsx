@@ -1,6 +1,6 @@
 
 "use client";
-import { useEffect, useState, Suspense, useCallback } from 'react';
+import { useEffect, useState, Suspense, useCallback, useRef } from 'react'; // Added useRef
 import { useSearchParams, useRouter } from 'next/navigation';
 import MapComponent from '@/components/map/MapComponent';
 import { ParkingCard } from '@/components/parking/ParkingCard';
@@ -11,12 +11,12 @@ import { Header } from '@/components/core/Header';
 import { Footer } from '@/components/core/Footer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardHeader, CardContent, CardFooter } from '@/components/ui/card'; // Added imports
 import { Search as SearchIcon, ListFilter, Map, Loader2, AlertTriangle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getDistanceFromLatLonInKm } from '@/lib/geoUtils';
 
-// Mock data for parking spaces - Removed 'distance' property
+// Mock data for parking spaces
 const allMockSpaces: ParkingSpace[] = [
   { id: 'ps1', name: 'Charminar Parking Plaza', address: 'Near Charminar, Hyderabad', availability: 'high', pricePerHour: 2.5, features: ['covered', 'ev-charging', 'cctv'], coordinates: { lat: 17.3616, lng: 78.4747 }, rating: 4.5, availableSpots: 50, totalSpots: 100, imageUrl: 'https://placehold.co/600x400.png' },
   { id: 'ps2', name: 'Hitech City Secure Park', address: 'Mindspace Circle, Hyderabad', availability: 'medium', pricePerHour: 3.0, features: ['cctv', 'secure'], coordinates: { lat: 17.4474, lng: 78.3762 }, rating: 4.2, availableSpots: 20, totalSpots: 80, imageUrl: 'https://placehold.co/600x400.png' },
@@ -25,12 +25,13 @@ const allMockSpaces: ParkingSpace[] = [
   { id: 'ps5', name: 'Secunderabad Station Park', address: 'Railway Station Rd, Secunderabad', availability: 'full', pricePerHour: 2.0, features: ['covered', 'ev-charging', 'secure'], coordinates: { lat: 17.4362, lng: 78.4990 }, rating: 4.8, availableSpots: 0, totalSpots: 75, imageUrl: 'https://placehold.co/600x400.png' },
 ];
 
-const DEFAULT_MAP_CENTER = { lat: 17.3850, lng: 78.4867 }; // Hyderabad
+const DEFAULT_MAP_CENTER_HYD = { lat: 17.3850, lng: 78.4867 }; // Hyderabad
 
 function SearchPageComponent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const initialLocationQuery = searchParams.get('location') || '';
+  const mainSearchInputRef = useRef<HTMLInputElement>(null); // Ref for main search input
 
   const [searchQuery, setSearchQuery] = useState(initialLocationQuery);
   const [displayedSpaces, setDisplayedSpaces] = useState<ParkingSpace[]>([]);
@@ -42,7 +43,6 @@ function SearchPageComponent() {
   const [activeSearchCenter, setActiveSearchCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [userSetFilters, setUserSetFilters] = useState<ParkingFilters | null>(null);
 
-  // Effect for initial centering based on URL query
   useEffect(() => {
     if (initialLocationQuery) {
       const matchedSpace = allMockSpaces.find(s =>
@@ -53,57 +53,52 @@ function SearchPageComponent() {
         setMapCenterForView(matchedSpace.coordinates);
         setActiveSearchCenter(matchedSpace.coordinates); 
       } else {
-        setMapCenterForView(DEFAULT_MAP_CENTER);
-        // Optionally, you could try to geocode initialLocationQuery here if you had a geocoding service
-        // For now, if no direct match, we don't set activeSearchCenter from query text alone
+        setMapCenterForView(DEFAULT_MAP_CENTER_HYD);
       }
     } else {
-      setMapCenterForView(DEFAULT_MAP_CENTER);
-      // setActiveSearchCenter(DEFAULT_MAP_CENTER); // Uncomment to show spots around Hyderabad by default
+      setMapCenterForView(DEFAULT_MAP_CENTER_HYD);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run only once on mount based on initial query
+  }, []); 
 
 
-  // Main data filtering useEffect
   useEffect(() => {
     setIsLoading(true);
-    // console.log("Filtering with: searchQuery:", searchQuery, "activeSearchCenter:", activeSearchCenter, "userSetFilters:", userSetFilters);
     
-    setTimeout(() => { // Simulate API delay
+    setTimeout(() => { 
       let filtered = allMockSpaces;
 
-      // 1. Text search (if searchQuery is present)
-      if (searchQuery.trim()) {
+      if (searchQuery.trim() && !activeSearchCenter) { // Prioritize activeSearchCenter if available
         filtered = filtered.filter(space =>
           space.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           space.address.toLowerCase().includes(searchQuery.toLowerCase())
         );
       }
 
-      // 2. Location-based search (if activeSearchCenter is set)
       if (activeSearchCenter) {
         const searchRadiusKm = userSetFilters?.distanceMax !== undefined && userSetFilters.distanceMax > 0 
                                ? userSetFilters.distanceMax 
                                : 1; // Default to 1km if not set by filter
-        
-        // console.log(`Filtering by location: center=${JSON.stringify(activeSearchCenter)}, radius=${searchRadiusKm}km`);
         
         filtered = filtered.filter(space => {
           const distance = getDistanceFromLatLonInKm(
             activeSearchCenter.lat, activeSearchCenter.lng,
             space.coordinates.lat, space.coordinates.lng
           );
-          // console.log(`Space: ${space.name}, Distance: ${distance}km`);
           return distance <= searchRadiusKm;
         });
+         // If search query also exists, filter further by text within the radius
+        if (searchQuery.trim()) {
+            filtered = filtered.filter(space =>
+                space.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                space.address.toLowerCase().includes(searchQuery.toLowerCase())
+            );
+        }
       } else if (!searchQuery.trim() && !userSetFilters) {
-         // If no search query, no active search center, and no filters, show no results or a message
-         // This state means the user hasn't specified any criteria yet.
-         // filtered = []; // Option 1: Show nothing until search/interaction
+         // Show nothing by default if no criteria
+         // filtered = []; 
       }
 
-      // 3. Preference filters (if userSetFilters is present)
       if (userSetFilters) {
         filtered = filtered.filter(space =>
           space.pricePerHour >= userSetFilters.priceRange[0] &&
@@ -115,43 +110,35 @@ function SearchPageComponent() {
 
       setDisplayedSpaces(filtered);
       
-      // Smart map centering update:
       if (filtered.length > 0) {
         if (activeSearchCenter) {
-            // If there was an active search center, keep the map centered there if results are found for it
             setMapCenterForView(activeSearchCenter);
-        } else if (searchQuery.trim()) {
-            // If search was by text and found results, center map on first result
+        } else if (searchQuery.trim() && !mapCenterForView) { // Only set map center from text if not already set
             setMapCenterForView(filtered[0].coordinates);
         }
-        // If no activeSearchCenter and no searchQuery, mapCenterForView remains at its default or last explicit setting
       } else if (activeSearchCenter) {
-         // No results, but there was an active search center, keep map centered there
          setMapCenterForView(activeSearchCenter);
+      } else if (!mapCenterForView) { // Fallback if nothing else sets it
+         setMapCenterForView(DEFAULT_MAP_CENTER_HYD);
       }
-      // If no results and no activeSearchCenter, mapCenterForView is already default.
 
       setIsLoading(false);
     }, 500); 
-  }, [searchQuery, activeSearchCenter, userSetFilters]);
+  }, [searchQuery, activeSearchCenter, userSetFilters, mapCenterForView]); // Added mapCenterForView
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // This will update the URL, and the main useEffect will pick up 'searchQuery'.
-    // True geocoding of 'searchQuery' to set 'activeSearchCenter' would be an enhancement.
     router.push(`/search?location=${encodeURIComponent(searchQuery)}`, { scroll: false });
-    // For now, manual map interaction or selecting from map search is primary way to set activeSearchCenter.
-    // Or if URL param matches a known space name/address.
+    // For text-only search, activeSearchCenter isn't immediately set unless a place is chosen via autocomplete
+    // The filtering useEffect will handle text search.
+    // If we had a geocoding service, we'd update activeSearchCenter here.
     const matchedSpace = allMockSpaces.find(s =>
         s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         s.address.toLowerCase().includes(searchQuery.toLowerCase())
       );
     if (matchedSpace) {
-        setActiveSearchCenter(matchedSpace.coordinates); // Trigger search around this if text matches
+        // setActiveSearchCenter(matchedSpace.coordinates); // Don't set activeSearchCenter from text search alone, let autocomplete/map interaction do that
         setMapCenterForView(matchedSpace.coordinates);
-    } else {
-        // setActiveSearchCenter(null); // Or try to geocode with an external service
-        // For simplicity, if no direct match, we rely on map interaction or existing activeSearchCenter.
     }
   };
 
@@ -169,23 +156,21 @@ function SearchPageComponent() {
   }, []);
 
   const handleMapIdle = useCallback((center: { lat: number; lng: number }) => {
-    // console.log("Map idle, new center:", center);
     setActiveSearchCenter(center);
-    setMapCenterForView(center); 
+    // setMapCenterForView(center); // Let map control its view, activeSearchCenter triggers data refresh
   }, []);
 
-  const handlePlaceSelectedOnMap = useCallback((place: google.maps.places.PlaceResult) => {
+  const handlePlaceSelectedOnMapOrInput = useCallback((place: google.maps.places.PlaceResult) => {
     if (place.geometry?.location) {
       const newCenter = { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() };
       setMapCenterForView(newCenter); 
       setActiveSearchCenter(newCenter); 
       if (place.name) {
-        setSearchQuery(place.name); 
+        setSearchQuery(place.name); // Update main search query with selected place name
       }
-      // router.push(`/search?location=${encodeURIComponent(place.name || '')}`, { scroll: false }); // Optional: update URL on map search too
+      // router.push(`/search?location=${encodeURIComponent(place.name || '')}`, { scroll: false }); // Optional: update URL
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ ]); // router, setSearchQuery can cause re-renders, manage carefully
+  }, []); 
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -197,6 +182,7 @@ function SearchPageComponent() {
           <div className="relative flex-grow">
              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground icon-glow" />
             <Input
+              ref={mainSearchInputRef} // Assign ref here
               type="text"
               placeholder="Enter address, landmark, or zip code..."
               value={searchQuery}
@@ -231,23 +217,22 @@ function SearchPageComponent() {
               </div>
             </div>
             
-            {viewMode === 'map' && (
-              <div className="mb-6 h-[600px] rounded-lg overflow-hidden shadow-xl">
+            <div className={`mb-6 h-[600px] rounded-lg overflow-hidden shadow-xl ${viewMode === 'map' ? '' : 'hidden lg:block'}`}>
                  <MapComponent 
                     markers={displayedSpaces.map(s => ({ id: s.id, lat: s.coordinates.lat, lng: s.coordinates.lng, label: s.name }))} 
                     center={mapCenterForView}
                     onMarkerClick={handleMarkerClick}
                     interactive={true}
-                    showSearchInput={true} 
+                    showSearchInput={true} // Map's own search input
+                    autocompleteInputRef={mainSearchInputRef} // Pass ref for main search input
                     showMyLocationButton={true} 
-                    onPlaceSelected={handlePlaceSelectedOnMap}
+                    onPlaceSelected={handlePlaceSelectedOnMapOrInput}
                     onMapIdle={handleMapIdle}
                 />
-              </div>
-            )}
+            </div>
 
             {isLoading ? (
-              <div className={`grid grid-cols-1 ${viewMode === 'list' ? 'md:grid-cols-2' : 'md:grid-cols-1'} gap-6`}>
+              <div className={`grid grid-cols-1 ${viewMode === 'list' ? 'md:grid-cols-2' : 'hidden'} gap-6`}>
                 {[...Array(4)].map((_, i) => (
                   <Card key={i} className="w-full">
                     <Skeleton className="h-48 w-full" />
@@ -258,11 +243,11 @@ function SearchPageComponent() {
                 ))}
               </div>
             ) : displayedSpaces.length === 0 ? (
-              <div className="text-center py-10 text-muted-foreground bg-card rounded-lg shadow p-6">
+              <div className={`text-center py-10 text-muted-foreground bg-card rounded-lg shadow p-6 ${viewMode === 'list' ? '' : 'hidden'}`}>
                 <AlertTriangle className="mx-auto h-12 w-12 mb-4 text-accent" />
                 <p className="text-lg font-medium text-foreground">No Parking Spots Found</p>
                 <p className="text-sm">Try adjusting your search, filters, or map location.</p>
-                 <p className="text-xs mt-1">Note: Parking spots are shown within a {userSetFilters?.distanceMax || 1}km radius of the current map search center.</p>
+                 <p className="text-xs mt-1">Note: Parking spots are shown within a {userSetFilters?.distanceMax || 1}km radius of the current map search center or selected location.</p>
               </div>
             ) : (
                viewMode === 'list' && (
@@ -274,6 +259,16 @@ function SearchPageComponent() {
                     ))}
                 </div>
                )
+            )}
+            {/* Ensure list view is shown on smaller screens if map view is active */}
+            {viewMode === 'map' && displayedSpaces.length > 0 && (
+                 <div className="lg:hidden mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {displayedSpaces.slice(0,4).map(space => ( // Show a few results below map on mobile
+                    <div key={space.id} id={`space-card-mobile-${space.id}`}>
+                        <ParkingCard space={space} />
+                    </div>
+                    ))}
+                </div>
             )}
           </div>
         </div>
@@ -290,4 +285,3 @@ export default function SearchPage() {
     </Suspense>
   );
 }
-
