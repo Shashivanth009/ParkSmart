@@ -1,6 +1,6 @@
 
 "use client";
-import { useEffect, useState, Suspense, useCallback, useRef } from 'react'; // Added useRef
+import { useEffect, useState, Suspense, useCallback, useRef } from 'react'; 
 import { useSearchParams, useRouter } from 'next/navigation';
 import MapComponent from '@/components/map/MapComponent';
 import { ParkingCard } from '@/components/parking/ParkingCard';
@@ -11,7 +11,7 @@ import { Header } from '@/components/core/Header';
 import { Footer } from '@/components/core/Footer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardHeader, CardContent, CardFooter } from '@/components/ui/card'; // Added imports
+import { Card, CardHeader, CardContent, CardFooter } from '@/components/ui/card';
 import { Search as SearchIcon, ListFilter, Map, Loader2, AlertTriangle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getDistanceFromLatLonInKm } from '@/lib/geoUtils';
@@ -31,7 +31,7 @@ function SearchPageComponent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const initialLocationQuery = searchParams.get('location') || '';
-  const mainSearchInputRef = useRef<HTMLInputElement>(null); // Ref for main search input
+  const mainSearchInputRef = useRef<HTMLInputElement>(null); 
 
   const [searchQuery, setSearchQuery] = useState(initialLocationQuery);
   const [displayedSpaces, setDisplayedSpaces] = useState<ParkingSpace[]>([]);
@@ -53,13 +53,16 @@ function SearchPageComponent() {
         setMapCenterForView(matchedSpace.coordinates);
         setActiveSearchCenter(matchedSpace.coordinates); 
       } else {
+        // If no match from URL query, try to geocode (mocked) or default
+        // For now, defaulting if no specific match, geocoding is out of scope for mock
         setMapCenterForView(DEFAULT_MAP_CENTER_HYD);
+        // setActiveSearchCenter(DEFAULT_MAP_CENTER_HYD); // User might want to pan first
       }
     } else {
       setMapCenterForView(DEFAULT_MAP_CENTER_HYD);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); 
+  }, []); // Run only once on initial load for URL param
 
 
   useEffect(() => {
@@ -68,13 +71,7 @@ function SearchPageComponent() {
     setTimeout(() => { 
       let filtered = allMockSpaces;
 
-      if (searchQuery.trim() && !activeSearchCenter) { // Prioritize activeSearchCenter if available
-        filtered = filtered.filter(space =>
-          space.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          space.address.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-      }
-
+      // 1. Geographic filtering based on activeSearchCenter
       if (activeSearchCenter) {
         const searchRadiusKm = userSetFilters?.distanceMax !== undefined && userSetFilters.distanceMax > 0 
                                ? userSetFilters.distanceMax 
@@ -87,18 +84,22 @@ function SearchPageComponent() {
           );
           return distance <= searchRadiusKm;
         });
-         // If search query also exists, filter further by text within the radius
-        if (searchQuery.trim()) {
-            filtered = filtered.filter(space =>
-                space.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                space.address.toLowerCase().includes(searchQuery.toLowerCase())
-            );
-        }
-      } else if (!searchQuery.trim() && !userSetFilters) {
-         // Show nothing by default if no criteria
-         // filtered = []; 
+      } else if (!searchQuery.trim() && !userSetFilters) { 
+        // If no active search center, no text query, and no filters, show nothing initially.
+        // User needs to interact with map or search.
+        filtered = [];
       }
 
+
+      // 2. Text search filtering (on name/address)
+      if (searchQuery.trim()) {
+        filtered = filtered.filter(space =>
+          space.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          space.address.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      }
+      
+      // 3. Preference filtering
       if (userSetFilters) {
         filtered = filtered.filter(space =>
           space.pricePerHour >= userSetFilters.priceRange[0] &&
@@ -110,34 +111,33 @@ function SearchPageComponent() {
 
       setDisplayedSpaces(filtered);
       
-      if (filtered.length > 0) {
-        if (activeSearchCenter) {
-            setMapCenterForView(activeSearchCenter);
-        } else if (searchQuery.trim() && !mapCenterForView) { // Only set map center from text if not already set
-            setMapCenterForView(filtered[0].coordinates);
-        }
-      } else if (activeSearchCenter) {
-         setMapCenterForView(activeSearchCenter);
-      } else if (!mapCenterForView) { // Fallback if nothing else sets it
+      // Update map center for view if needed, prioritize active search center
+      if (activeSearchCenter) {
+        setMapCenterForView(activeSearchCenter);
+      } else if (filtered.length > 0 && !mapCenterForView) { 
+        setMapCenterForView(filtered[0].coordinates);
+      } else if (!mapCenterForView) {
          setMapCenterForView(DEFAULT_MAP_CENTER_HYD);
       }
 
       setIsLoading(false);
     }, 500); 
-  }, [searchQuery, activeSearchCenter, userSetFilters, mapCenterForView]); // Added mapCenterForView
+  }, [searchQuery, activeSearchCenter, userSetFilters]);
+
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // This will trigger the useEffect above by changing searchQuery.
+    // The URL update can happen here or be managed by PlaceSelected if autocomplete is used.
     router.push(`/search?location=${encodeURIComponent(searchQuery)}`, { scroll: false });
-    // For text-only search, activeSearchCenter isn't immediately set unless a place is chosen via autocomplete
-    // The filtering useEffect will handle text search.
-    // If we had a geocoding service, we'd update activeSearchCenter here.
+    
+    // If we had a geocoding service, we'd update activeSearchCenter here based on searchQuery.
+    // For now, text search relies on map interaction or autocomplete to set geographic center.
     const matchedSpace = allMockSpaces.find(s =>
         s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         s.address.toLowerCase().includes(searchQuery.toLowerCase())
       );
-    if (matchedSpace) {
-        // setActiveSearchCenter(matchedSpace.coordinates); // Don't set activeSearchCenter from text search alone, let autocomplete/map interaction do that
+    if (matchedSpace && !activeSearchCenter) { // Only if no active search center, hint map
         setMapCenterForView(matchedSpace.coordinates);
     }
   };
@@ -156,8 +156,8 @@ function SearchPageComponent() {
   }, []);
 
   const handleMapIdle = useCallback((center: { lat: number; lng: number }) => {
-    setActiveSearchCenter(center);
-    // setMapCenterForView(center); // Let map control its view, activeSearchCenter triggers data refresh
+    // setActiveSearchCenter(center); // This will trigger re-filter
+    // setMapCenterForView(center); // Map manages its own view, idle sets search center
   }, []);
 
   const handlePlaceSelectedOnMapOrInput = useCallback((place: google.maps.places.PlaceResult) => {
@@ -166,11 +166,11 @@ function SearchPageComponent() {
       setMapCenterForView(newCenter); 
       setActiveSearchCenter(newCenter); 
       if (place.name) {
-        setSearchQuery(place.name); // Update main search query with selected place name
+        setSearchQuery(place.name); 
       }
-      // router.push(`/search?location=${encodeURIComponent(place.name || '')}`, { scroll: false }); // Optional: update URL
+      router.push(`/search?location=${encodeURIComponent(place.name || '')}`, { scroll: false });
     }
-  }, []); 
+  }, [router]); 
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -182,7 +182,7 @@ function SearchPageComponent() {
           <div className="relative flex-grow">
              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground icon-glow" />
             <Input
-              ref={mainSearchInputRef} // Assign ref here
+              ref={mainSearchInputRef} 
               type="text"
               placeholder="Enter address, landmark, or zip code..."
               value={searchQuery}
@@ -223,11 +223,11 @@ function SearchPageComponent() {
                     center={mapCenterForView}
                     onMarkerClick={handleMarkerClick}
                     interactive={true}
-                    showSearchInput={true} // Map's own search input
-                    autocompleteInputRef={mainSearchInputRef} // Pass ref for main search input
+                    showSearchInput={true} 
+                    autocompleteInputRef={mainSearchInputRef} 
                     showMyLocationButton={true} 
                     onPlaceSelected={handlePlaceSelectedOnMapOrInput}
-                    onMapIdle={handleMapIdle}
+                    onMapIdle={(center) => setActiveSearchCenter(center)} // Update active search center on map idle
                 />
             </div>
 
@@ -285,3 +285,4 @@ export default function SearchPage() {
     </Suspense>
   );
 }
+

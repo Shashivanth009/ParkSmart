@@ -1,7 +1,7 @@
 
 "use client"; 
 
-import { useState } from 'react'; 
+import { useState, useRef, useCallback } from 'react'; // Added useRef, useCallback
 import { useRouter } from 'next/navigation'; 
 import { Header } from '@/components/core/Header';
 import { Footer } from '@/components/core/Footer';
@@ -20,11 +20,13 @@ const mockFeaturedSpaces: ParkingSpace[] = [
   { id: 'ps3', name: 'Gachibowli Stadium Lot', address: 'Old Mumbai Hwy, Hyderabad', availability: 'low', pricePerHour: 1.8, features: ['covered', 'secure', 'well-lit'], coordinates: { lat: 17.4417, lng: 78.3498 }, rating: 4.0, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 5, totalSpots: 150 },
 ];
 
-const HOMEPAGE_MAP_CENTER = { lat: 17.3850, lng: 78.4867 }; // Hyderabad
+const INITIAL_HOMEPAGE_MAP_CENTER = { lat: 17.3850, lng: 78.4867 }; // Hyderabad
 
 export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState(''); 
   const router = useRouter(); 
+  const heroSearchInputRef = useRef<HTMLInputElement>(null);
+  const [mapCenter, setMapCenter] = useState(INITIAL_HOMEPAGE_MAP_CENTER);
 
   const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -34,6 +36,16 @@ export default function HomePage() {
       router.push('/search'); 
     }
   };
+
+  const handlePlaceSelected = useCallback((place: google.maps.places.PlaceResult) => {
+    if (place.geometry?.location) {
+      const newCenter = { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() };
+      setMapCenter(newCenter);
+      if (place.name) {
+        setSearchQuery(place.name); // Update search query with selected place name
+      }
+    }
+  }, []);
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -57,6 +69,7 @@ export default function HomePage() {
               <div className="relative w-full">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground icon-glow" />
                 <Input
+                  ref={heroSearchInputRef}
                   type="text"
                   placeholder="Enter location, e.g., 'Hitech City, Hyderabad'"
                   className="pl-10 pr-4 py-3 h-12 text-base w-full"
@@ -80,11 +93,13 @@ export default function HomePage() {
             </h2>
             <MapComponent 
               markers={mockFeaturedSpaces.map(s => ({ id: s.id, lat: s.coordinates.lat, lng: s.coordinates.lng, label: s.name }))}
-              center={HOMEPAGE_MAP_CENTER} 
+              center={mapCenter} 
               interactive={true} 
               showMyLocationButton={true} 
               className="rounded-xl shadow-2xl"
-              onMarkerClick={(id) => router.push(`/booking/${id}`)} // Navigate to booking page on marker click
+              onMarkerClick={(id) => router.push(`/booking/${id}`)}
+              autocompleteInputRef={heroSearchInputRef} // Connect hero search to map autocomplete
+              onPlaceSelected={handlePlaceSelected} // Handle place selection from hero search
             />
             <div className="text-center mt-8">
               <Button size="lg" asChild>
@@ -154,7 +169,13 @@ export default function HomePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
               {mockFeaturedSpaces.map(space => (
                 <Card key={space.id} className="overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300">
-                  <Image src={space.imageUrl!} alt={space.name} width={600} height={400} className="w-full h-48 object-cover" data-ai-hint="parking lot building" />
+                  <Image 
+                    src={space.imageUrl!} 
+                    alt={space.name} 
+                    width={600} 
+                    height={400} 
+                    className="w-full h-48 object-cover" 
+                    data-ai-hint="parking garage building" />
                   <CardHeader>
                     <CardTitle>{space.name}</CardTitle>
                     <CardDescription>{space.address}</CardDescription>

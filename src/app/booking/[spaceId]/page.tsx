@@ -1,3 +1,4 @@
+
 "use client";
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -11,6 +12,7 @@ import Image from 'next/image';
 import { MapPin, DollarSign, Users, Star, ShieldCheck, Zap, Car, Loader2 } from 'lucide-react';
 import { featureIcons, featureLabels } from '@/types';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button'; // Added import
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
 
@@ -19,8 +21,8 @@ const fetchSpaceDetails = async (spaceId: string): Promise<ParkingSpace | null> 
   console.log("Fetching details for space:", spaceId);
   await new Promise(resolve => setTimeout(resolve, 1000));
   const mockSpaces: ParkingSpace[] = [
-    { id: 'ps1', name: 'City Center Parking', address: '123 Main St, Anytown', availability: 'high', pricePerHour: 2.5, features: ['covered', 'ev-charging', 'cctv'], coordinates: { lat: 28.6139, lng: 77.2090 }, rating: 4.5, distance: '0.5 km', availableSpots: 50, totalSpots: 100, imageUrl: 'https://placehold.co/800x450.png' },
-    { id: 'ps2', name: 'Downtown Garage', address: '456 Oak Ave, Anytown', availability: 'medium', pricePerHour: 3.0, features: ['cctv', 'secure'], coordinates: { lat: 28.6150, lng: 77.2100 }, rating: 4.2, distance: '1.2 km', availableSpots: 20, totalSpots: 80, imageUrl: 'https://placehold.co/800x450.png' },
+    { id: 'ps1', name: 'City Center Parking', address: '123 Main St, Anytown', availability: 'high', pricePerHour: 2.5, features: ['covered', 'ev-charging', 'cctv'], coordinates: { lat: 28.6139, lng: 77.2090 }, rating: 4.5, availableSpots: 50, totalSpots: 100, imageUrl: 'https://placehold.co/800x450.png' },
+    { id: 'ps2', name: 'Downtown Garage', address: '456 Oak Ave, Anytown', availability: 'medium', pricePerHour: 3.0, features: ['cctv', 'secure'], coordinates: { lat: 28.6150, lng: 77.2100 }, rating: 4.2, availableSpots: 20, totalSpots: 80, imageUrl: 'https://placehold.co/800x450.png' },
     // Add other spaces from search page if needed for direct navigation
   ];
   return mockSpaces.find(s => s.id === spaceId) || null;
@@ -83,7 +85,7 @@ export default function BookingPage() {
     
     // Generate a mock booking ID
     const mockBookingId = `bk_${Date.now()}`;
-    router.push(`/booking/confirmation/${mockBookingId}?spaceName=${encodeURIComponent(space?.name || '')}&address=${encodeURIComponent(space?.address || '')}&startTime=${encodeURIComponent(formData.date.toISOString())}&endTime=${encodeURIComponent(endTime.toISOString())}&cost=${totalCost}`);
+    router.push(`/booking/confirmation/${mockBookingId}?spaceName=${encodeURIComponent(space?.name || '')}&address=${encodeURIComponent(space?.address || '')}&startTime=${encodeURIComponent(formData.date.toISOString())}&endTime=${encodeURIComponent(endTime.toISOString())}&cost=${totalCost}&vehiclePlate=${encodeURIComponent(formData.vehiclePlate || '')}`);
   };
 
   if (authLoading || isLoading) {
@@ -169,3 +171,4 @@ export default function BookingPage() {
     </div>
   );
 }
+

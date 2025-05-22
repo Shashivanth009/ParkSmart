@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { ParkingSpace, ParkingFeature } from '@/types';
-import { MapPin, Users, Star } from 'lucide-react'; // Removed unused icons, added Users
+import { MapPin, Users, Star } from 'lucide-react'; 
 import { featureIcons, featureLabels } from '@/types';
 
 
@@ -41,7 +41,7 @@ export function ParkingCard({ space }: ParkingCardProps) {
             alt={`Parking at ${space.name}`}
             layout="fill"
             objectFit="cover"
-            data-ai-hint="parking lot exterior"
+            data-ai-hint="parking lot building" // Generic hint, can be more specific if data allows
           />
            {space.rating && (
             <Badge variant="default" className="absolute top-2 right-2 bg-black/70 text-white border-none">
@@ -75,14 +75,8 @@ export function ParkingCard({ space }: ParkingCardProps) {
             </div>
         }
 
-        {/* Removed static distance display
-        {space.distance && (
-          <p className="text-sm text-muted-foreground">Distance: {space.distance}</p>
-        )}
-        */}
-
         <div className="flex flex-wrap gap-x-3 gap-y-1.5 pt-1">
-          {space.features.slice(0, 3).map(feature => ( // Show max 3 features initially
+          {space.features.slice(0, 3).map(feature => ( 
             <FeatureIconDisplay key={feature} feature={feature} />
           ))}
           {space.features.length > 3 && (
