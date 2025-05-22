@@ -1,8 +1,8 @@
 
-"use client"; // Added to enable useState and useRouter
+"use client"; 
 
-import { useState } from 'react'; // Added for search input state
-import { useRouter } from 'next/navigation'; // Added for navigation
+import { useState } from 'react'; 
+import { useRouter } from 'next/navigation'; 
 import { Header } from '@/components/core/Header';
 import { Footer } from '@/components/core/Footer';
 import MapComponent from '@/components/map/MapComponent';
@@ -14,7 +14,6 @@ import Link from 'next/link';
 import Image from 'next/image';
 import type { ParkingSpace } from '@/types';
 
-// Mock data for featured parking spaces (updated to Hyderabad)
 const mockFeaturedSpaces: ParkingSpace[] = [
   { id: 'ps1', name: 'Charminar Parking Plaza', address: 'Near Charminar, Hyderabad', availability: 'high', pricePerHour: 2.5, features: ['covered', 'ev-charging', 'cctv'], coordinates: { lat: 17.3616, lng: 78.4747 }, rating: 4.5, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 50, totalSpots: 100 },
   { id: 'ps2', name: 'Hitech City Secure Park', address: 'Mindspace Circle, Hyderabad', availability: 'medium', pricePerHour: 3.0, features: ['cctv', 'secure'], coordinates: { lat: 17.4474, lng: 78.3762 }, rating: 4.2, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 20, totalSpots: 80 },
@@ -23,15 +22,15 @@ const mockFeaturedSpaces: ParkingSpace[] = [
 
 
 export default function HomePage() {
-  const [searchQuery, setSearchQuery] = useState(''); // Added state for search query
-  const router = useRouter(); // Added router instance
+  const [searchQuery, setSearchQuery] = useState(''); 
+  const router = useRouter(); 
 
   const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (searchQuery.trim()) {
       router.push(`/search?location=${encodeURIComponent(searchQuery.trim())}`);
     } else {
-      router.push('/search'); // Navigate to search page even if query is empty
+      router.push('/search'); 
     }
   };
 
@@ -42,7 +41,6 @@ export default function HomePage() {
         {/* Hero Section */}
         <section className="relative py-20 md:py-32 bg-gradient-to-br from-background to-primary/20">
           <div className="absolute inset-0 opacity-10">
-             {/* Subtle background pattern or image could go here */}
           </div>
           <div className="container mx-auto px-4 md:px-6 text-center relative">
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-foreground">
@@ -52,7 +50,7 @@ export default function HomePage() {
               Find, book, and pay for parking in just a few clicks. ParkSmart makes urban mobility easier.
             </p>
             <form 
-              onSubmit={handleSearchSubmit} // Added onSubmit handler
+              onSubmit={handleSearchSubmit} 
               className="mt-8 md:mt-10 max-w-xl mx-auto flex flex-col sm:flex-row items-center gap-3 p-2 bg-card rounded-lg shadow-xl"
             >
               <div className="relative w-full">
@@ -62,8 +60,8 @@ export default function HomePage() {
                   placeholder="Enter location, e.g., 'Hitech City, Hyderabad'"
                   className="pl-10 pr-4 py-3 h-12 text-base w-full"
                   aria-label="Search for parking"
-                  value={searchQuery} // Bound value to state
-                  onChange={(e) => setSearchQuery(e.target.value)} // Update state on change
+                  value={searchQuery} 
+                  onChange={(e) => setSearchQuery(e.target.value)} 
                 />
               </div>
               <Button type="submit" size="lg" className="w-full sm:w-auto h-12 shrink-0">
@@ -73,7 +71,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Map Overview Section - Placeholder for Mappls */}
+        {/* Map Overview Section */}
         <section className="py-12 md:py-16 bg-background">
           <div className="container mx-auto px-4 md:px-6">
             <h2 className="text-3xl font-bold text-center mb-8 md:mb-12 text-foreground">
@@ -81,8 +79,9 @@ export default function HomePage() {
             </h2>
             <MapComponent 
               markers={mockFeaturedSpaces.map(s => ({ id: s.id, lat: s.coordinates.lat, lng: s.coordinates.lng, label: s.name }))}
-              center={{ lat: 17.3850, lng: 78.4867 }} // Center map on Hyderabad
-              interactive={false} 
+              center={{ lat: 17.3850, lng: 78.4867 }} 
+              interactive={true} // Allow interaction on homepage map as well
+              showMyLocationButton={true} // Add My Location button
               className="rounded-xl shadow-2xl"
             />
             <div className="text-center mt-8">

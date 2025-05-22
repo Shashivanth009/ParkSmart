@@ -1,7 +1,7 @@
 
 "use client";
 import { useEffect, useState, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation'; // Added useRouter
 import MapComponent from '@/components/map/MapComponent';
 import { ParkingCard } from '@/components/parking/ParkingCard';
 import type { ParkingSpace } from '@/types';
@@ -11,7 +11,7 @@ import { Header } from '@/components/core/Header';
 import { Footer } from '@/components/core/Footer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'; // Added Card and related imports
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Search as SearchIcon, ListFilter, Map, Loader2, AlertTriangle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -26,39 +26,33 @@ const allMockSpaces: ParkingSpace[] = [
 
 function SearchPageComponent() {
   const searchParams = useSearchParams();
+  const router = useRouter(); // Added router instance
   const initialQuery = searchParams.get('location') || '';
   
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [displayedSpaces, setDisplayedSpaces] = useState<ParkingSpace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'map' | 'list'>('list'); // Default to list view
-  const [mapCenter, setMapCenter] = useState({ lat: 17.3850, lng: 78.4867 }); // Default center to Hyderabad
+  const [viewMode, setViewMode] = useState<'map' | 'list'>('list'); 
+  const [mapCenter, setMapCenter] = useState({ lat: 17.3850, lng: 78.4867 }); 
   const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null);
 
 
   useEffect(() => {
-    // Simulate fetching and filtering data
     setIsLoading(true);
     setTimeout(() => {
-      // Basic search query filter (name or address)
       let filtered = allMockSpaces.filter(space => 
         space.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
         space.address.toLowerCase().includes(searchQuery.toLowerCase())
       );
-      // TODO: Apply advanced filters from ParkingPreferenceFilter
       setDisplayedSpaces(filtered);
       if (filtered.length > 0) {
-        // Update map center based on results, or keep default if no specific query match
          const firstResultCoords = filtered[0].coordinates;
-         if (searchQuery || filtered.length === 1) { // Center on first result if a search was made or only one result
+         if (searchQuery || filtered.length === 1) { 
             setMapCenter(firstResultCoords);
          } else {
-            // Keep Hyderabad general center if no search query and multiple "default" results
             setMapCenter({ lat: 17.3850, lng: 78.4867 });
          }
-
       } else {
-         // If no results, keep current/default map center (Hyderabad)
          setMapCenter({ lat: 17.3850, lng: 78.4867 });
       }
       setIsLoading(false);
@@ -68,14 +62,13 @@ function SearchPageComponent() {
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Trigger re-fetch/re-filter, already handled by searchQuery state change
-    // For a real app, you might push to router here to update URL params
+    // Update URL to reflect search query, which triggers useEffect
+    router.push(`/search?location=${encodeURIComponent(searchQuery)}`, { scroll: false });
   };
 
   const handleApplyFilters = (filters: ParkingFilters) => {
     setIsLoading(true);
     console.log("Applying filters:", filters);
-    // Simulate filtering based on preferences
     setTimeout(() => {
       let filtered = allMockSpaces.filter(space => 
         (space.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -96,12 +89,22 @@ function SearchPageComponent() {
   
   const handleMarkerClick = (spaceId: string) => {
     setSelectedSpaceId(spaceId);
-    setViewMode('list'); // Switch to list view and scroll to the card
+    setViewMode('list'); 
     const element = document.getElementById(`space-card-${spaceId}`);
     element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    // Highlight the card
     element?.classList.add('ring-2', 'ring-primary', 'shadow-2xl');
     setTimeout(() => element?.classList.remove('ring-2', 'ring-primary', 'shadow-2xl'), 2000);
+  };
+
+  const handlePlaceSelectedOnMap = (place: google.maps.places.PlaceResult) => {
+    if (place.name) {
+      setSearchQuery(place.name); // Update search input with selected place
+    }
+    if (place.geometry?.location) {
+      setMapCenter({ lat: place.geometry.location.lat(), lng: place.geometry.location.lng() });
+    }
+     // Optionally trigger a new search based on this selection
+     router.push(`/search?location=${encodeURIComponent(place.name || '')}`, { scroll: false });
   };
 
 
@@ -111,6 +114,7 @@ function SearchPageComponent() {
       <main className="flex-grow container mx-auto px-4 md:px-6 py-8">
         <PageTitle title="Find Your Perfect Parking Spot" description="Search by location and filter by your preferences." />
 
+        {/* Main search input form, separate from map's internal search */}
         <form onSubmit={handleSearchSubmit} className="mb-8 flex flex-col sm:flex-row gap-3">
           <div className="relative flex-grow">
              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground icon-glow" />
@@ -128,14 +132,12 @@ function SearchPageComponent() {
         </form>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Filters Column */}
           <div className="lg:col-span-4 xl:col-span-3">
-             <div className="sticky top-20"> {/* top-20 to account for header height + some padding */}
+             <div className="sticky top-20"> 
                 <ParkingPreferenceFilter onApplyFilters={handleApplyFilters} />
              </div>
           </div>
 
-          {/* Results Column */}
           <div className="lg:col-span-8 xl:col-span-9">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-semibold">
@@ -158,6 +160,9 @@ function SearchPageComponent() {
                     center={mapCenter}
                     onMarkerClick={handleMarkerClick}
                     interactive={true}
+                    showSearchInput={true} // Enable search input on the map
+                    showMyLocationButton={true} // Enable My Location button
+                    onPlaceSelected={handlePlaceSelectedOnMap} // Handle place selection from map's search
                 />
               </div>
             )}
@@ -198,7 +203,6 @@ function SearchPageComponent() {
   );
 }
 
-//This page uses useSearchParams, so it needs to be wrapped in Suspense
 export default function SearchPage() {
   return (
     <Suspense fallback={<div className="flex h-screen items-center justify-center"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>}>
@@ -206,4 +210,3 @@ export default function SearchPage() {
     </Suspense>
   );
 }
-
