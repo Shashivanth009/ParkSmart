@@ -1,3 +1,4 @@
+
 import { Header } from '@/components/core/Header';
 import { Footer } from '@/components/core/Footer';
 import MapComponent from '@/components/map/MapComponent';
@@ -9,11 +10,11 @@ import Link from 'next/link';
 import Image from 'next/image';
 import type { ParkingSpace } from '@/types';
 
-// Mock data for featured parking spaces
+// Mock data for featured parking spaces (updated to Hyderabad)
 const mockFeaturedSpaces: ParkingSpace[] = [
-  { id: 'ps1', name: 'City Center Parking', address: '123 Main St, Anytown', availability: 'high', pricePerHour: 2.5, features: ['covered', 'ev-charging', 'cctv'], coordinates: { lat: 28.6139, lng: 77.2090 }, rating: 4.5, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 50, totalSpots: 100 },
-  { id: 'ps2', name: 'Downtown Garage', address: '456 Oak Ave, Anytown', availability: 'medium', pricePerHour: 3.0, features: ['cctv', 'secure'], coordinates: { lat: 28.6150, lng: 77.2100 }, rating: 4.2, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 20, totalSpots: 80 },
-  { id: 'ps3', name: 'Airport Long Term', address: '789 Pine Ln, Anytown', availability: 'low', pricePerHour: 1.8, features: ['covered', 'secure', 'well-lit'], coordinates: { lat: 28.6100, lng: 77.2000 }, rating: 4.0, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 5, totalSpots: 150 },
+  { id: 'ps1', name: 'Charminar Parking Plaza', address: 'Near Charminar, Hyderabad', availability: 'high', pricePerHour: 2.5, features: ['covered', 'ev-charging', 'cctv'], coordinates: { lat: 17.3616, lng: 78.4747 }, rating: 4.5, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 50, totalSpots: 100 },
+  { id: 'ps2', name: 'Hitech City Secure Park', address: 'Mindspace Circle, Hyderabad', availability: 'medium', pricePerHour: 3.0, features: ['cctv', 'secure'], coordinates: { lat: 17.4474, lng: 78.3762 }, rating: 4.2, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 20, totalSpots: 80 },
+  { id: 'ps3', name: 'Gachibowli Stadium Lot', address: 'Old Mumbai Hwy, Hyderabad', availability: 'low', pricePerHour: 1.8, features: ['covered', 'secure', 'well-lit'], coordinates: { lat: 17.4417, lng: 78.3498 }, rating: 4.0, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 5, totalSpots: 150 },
 ];
 
 
@@ -39,7 +40,7 @@ export default function HomePage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground icon-glow" />
                 <Input
                   type="text"
-                  placeholder="Enter location, e.g., 'Connaught Place'"
+                  placeholder="Enter location, e.g., 'Hitech City, Hyderabad'"
                   className="pl-10 pr-4 py-3 h-12 text-base w-full"
                   aria-label="Search for parking"
                 />
@@ -59,6 +60,7 @@ export default function HomePage() {
             </h2>
             <MapComponent 
               markers={mockFeaturedSpaces.map(s => ({ id: s.id, lat: s.coordinates.lat, lng: s.coordinates.lng, label: s.name }))}
+              center={{ lat: 17.3850, lng: 78.4867 }} // Center map on Hyderabad
               interactive={false} 
               className="rounded-xl shadow-2xl"
             />
@@ -158,3 +160,4 @@ export default function HomePage() {
     </div>
   );
 }
+

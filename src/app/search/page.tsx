@@ -1,3 +1,4 @@
+
 "use client";
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -15,11 +16,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 // Mock data for parking spaces
 const allMockSpaces: ParkingSpace[] = [
-  { id: 'ps1', name: 'City Center Parking', address: '123 Main St, Anytown', availability: 'high', pricePerHour: 2.5, features: ['covered', 'ev-charging', 'cctv'], coordinates: { lat: 28.6139, lng: 77.2090 }, rating: 4.5, distance: '0.5 km', availableSpots: 50, totalSpots: 100, imageUrl: 'https://placehold.co/600x400.png' },
-  { id: 'ps2', name: 'Downtown Garage', address: '456 Oak Ave, Anytown', availability: 'medium', pricePerHour: 3.0, features: ['cctv', 'secure'], coordinates: { lat: 28.6150, lng: 77.2100 }, rating: 4.2, distance: '1.2 km', availableSpots: 20, totalSpots: 80, imageUrl: 'https://placehold.co/600x400.png' },
-  { id: 'ps3', name: 'Airport Long Term', address: '789 Pine Ln, Anytown', availability: 'low', pricePerHour: 1.8, features: ['covered', 'secure', 'well-lit'], coordinates: { lat: 28.6100, lng: 77.2000 }, rating: 4.0, distance: '5.5 km', availableSpots: 5, totalSpots: 150, imageUrl: 'https://placehold.co/600x400.png' },
-  { id: 'ps4', name: 'Suburbia Park & Ride', address: '100 Suburbia Dr, Anytown', availability: 'high', pricePerHour: 1.0, features: ['well-lit'], coordinates: { lat: 28.6000, lng: 77.1900 }, rating: 3.8, distance: '8.0 km', availableSpots: 100, totalSpots: 200, imageUrl: 'https://placehold.co/600x400.png' },
-  { id: 'ps5', name: 'Tech Park Tower A', address: '200 Innovation Rd, Anytown', availability: 'full', pricePerHour: 4.0, features: ['covered', 'ev-charging', 'secure'], coordinates: { lat: 28.6050, lng: 77.2150 }, rating: 4.8, distance: '2.1 km', availableSpots: 0, totalSpots: 75, imageUrl: 'https://placehold.co/600x400.png' },
+  { id: 'ps1', name: 'Charminar Parking Plaza', address: 'Near Charminar, Hyderabad', availability: 'high', pricePerHour: 2.5, features: ['covered', 'ev-charging', 'cctv'], coordinates: { lat: 17.3616, lng: 78.4747 }, rating: 4.5, distance: '0.5 km', availableSpots: 50, totalSpots: 100, imageUrl: 'https://placehold.co/600x400.png' },
+  { id: 'ps2', name: 'Hitech City Secure Park', address: 'Mindspace Circle, Hyderabad', availability: 'medium', pricePerHour: 3.0, features: ['cctv', 'secure'], coordinates: { lat: 17.4474, lng: 78.3762 }, rating: 4.2, distance: '1.2 km', availableSpots: 20, totalSpots: 80, imageUrl: 'https://placehold.co/600x400.png' },
+  { id: 'ps3', name: 'Gachibowli Stadium Lot', address: 'Old Mumbai Hwy, Hyderabad', availability: 'low', pricePerHour: 1.8, features: ['covered', 'secure', 'well-lit'], coordinates: { lat: 17.4417, lng: 78.3498 }, rating: 4.0, distance: '5.5 km', availableSpots: 5, totalSpots: 150, imageUrl: 'https://placehold.co/600x400.png' },
+  { id: 'ps4', name: 'Banjara Hills Valet', address: 'Rd Number 1, Hyderabad', availability: 'high', pricePerHour: 4.0, features: ['well-lit', 'covered'], coordinates: { lat: 17.4150, lng: 78.4499 }, rating: 3.8, distance: '8.0 km', availableSpots: 100, totalSpots: 200, imageUrl: 'https://placehold.co/600x400.png' },
+  { id: 'ps5', name: 'Secunderabad Station Park', address: 'Railway Station Rd, Secunderabad', availability: 'full', pricePerHour: 2.0, features: ['covered', 'ev-charging', 'secure'], coordinates: { lat: 17.4362, lng: 78.4990 }, rating: 4.8, distance: '2.1 km', availableSpots: 0, totalSpots: 75, imageUrl: 'https://placehold.co/600x400.png' },
 ];
 
 function SearchPageComponent() {
@@ -30,7 +31,7 @@ function SearchPageComponent() {
   const [displayedSpaces, setDisplayedSpaces] = useState<ParkingSpace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'map' | 'list'>('list'); // Default to list view
-  const [mapCenter, setMapCenter] = useState({ lat: 28.6139, lng: 77.2090 }); // Default center
+  const [mapCenter, setMapCenter] = useState({ lat: 17.3850, lng: 78.4867 }); // Default center to Hyderabad
   const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null);
 
 
@@ -46,7 +47,18 @@ function SearchPageComponent() {
       // TODO: Apply advanced filters from ParkingPreferenceFilter
       setDisplayedSpaces(filtered);
       if (filtered.length > 0) {
-        setMapCenter(filtered[0].coordinates);
+        // Update map center based on results, or keep default if no specific query match
+         const firstResultCoords = filtered[0].coordinates;
+         if (searchQuery || filtered.length === 1) { // Center on first result if a search was made or only one result
+            setMapCenter(firstResultCoords);
+         } else {
+            // Keep Hyderabad general center if no search query and multiple "default" results
+            setMapCenter({ lat: 17.3850, lng: 78.4867 });
+         }
+
+      } else {
+         // If no results, keep current/default map center (Hyderabad)
+         setMapCenter({ lat: 17.3850, lng: 78.4867 });
       }
       setIsLoading(false);
     }, 1500);

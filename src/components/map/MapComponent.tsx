@@ -35,7 +35,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
   interactive = true,
   onMarkerClick,
   zoom = 12,
-  center = { lat: 28.6139, lng: 77.2090 } // Default to Delhi, India
+  center = { lat: 17.3850, lng: 78.4867 } // Default to Hyderabad, India
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);

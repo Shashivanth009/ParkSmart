@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -8,26 +9,26 @@ body {
 
 @layer base {
   :root {
-    /* These are fallback light theme variables, but dark theme will be default */
+    /* Fallback light theme variables */
     --background: 0 0% 100%;
     --foreground: 240 10% 3.9%;
     --card: 0 0% 100%;
     --card-foreground: 240 10% 3.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
-    --primary: 232 53% 40%; /* Dark Blue */
-    --primary-foreground: 0 0% 98%;
+    --primary: 170 60% 40%; /* Teal */
+    --primary-foreground: 170 50% 95%;
     --secondary: 240 4.8% 95.9%;
     --secondary-foreground: 240 5.9% 10%;
     --muted: 240 4.8% 95.9%;
     --muted-foreground: 240 3.8% 46.1%;
-    --accent: 15 100% 63%; /* Orange */
-    --accent-foreground: 0 0% 10%;
+    --accent: 320 70% 55%; /* Magenta/Pink */
+    --accent-foreground: 320 70% 10%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
     --border: 240 5.9% 90%;
     --input: 240 5.9% 90%;
-    --ring: 15 100% 63%; /* Orange for focus rings */
+    --ring: 320 70% 55%; /* Match accent for focus rings */
     --radius: 0.5rem;
 
     --chart-1: 12 76% 61%;
@@ -38,26 +39,27 @@ body {
   }
 
   .dark {
-    --background: 0 0% 19%; /* Dark Gray #303030 */
-    --foreground: 0 0% 95%; /* Light color for text on dark gray */
-    --card: 0 0% 22%; /* Slightly lighter than background for cards */
+    --background: 220 15% 18%; /* Dark Slate Blue/Gray */
+    --foreground: 0 0% 95%; 
+    --card: 220 15% 22%; /* Slightly lighter than background for cards */
     --card-foreground: 0 0% 95%;
-    --popover: 0 0% 12%; /* Darker for popovers */
+    --popover: 220 15% 15%; /* Darker for popovers */
     --popover-foreground: 0 0% 95%;
-    --primary: 232 53% 50%; /* Adjusted Dark Blue for better visibility on dark bg */
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 25%; /* Darker secondary */
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 25%; /* Darker muted */
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 15 100% 63%; /* Orange */
-    --accent-foreground: 0 0% 10%; /* Dark text on orange accent */
-    --destructive: 0 72.2% 50.6%; /* Adjusted destructive */
+    --primary: 170 60% 45%; /* Vibrant Teal */
+    --primary-foreground: 170 50% 95%; /* Very light teal/white for contrast */
+    --secondary: 220 15% 25%; /* Slightly lighter dark shade for secondary elements */
+    --secondary-foreground: 0 0% 95%;
+    --muted: 220 12% 28%; /* Muted dark shade */
+    --muted-foreground: 220 10% 65%; /* Lighter muted text */
+    --accent: 320 70% 55%; /* Vibrant Magenta/Pink */
+    --accent-foreground: 320 70% 10%; /* Dark text for readability on accent */
+    --destructive: 0 70% 50%; 
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 30%;
-    --input: 0 0% 28%;
-    --ring: 15 100% 63%; /* Orange for focus rings */
+    --border: 220 10% 30%; /* Subtle border */
+    --input: 220 10% 28%; /* Subtle input background */
+    --ring: 320 70% 55%; /* Match accent for focus rings */
 
+    /* Chart colors can be adjusted if needed, keeping current ones for now */
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
@@ -85,3 +87,4 @@ body {
 .icon-glow-primary {
   filter: drop-shadow(0 0 3px hsl(var(--primary) / 0.6));
 }
+
