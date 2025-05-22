@@ -3,7 +3,8 @@
 import { useEffect, useState, Suspense, useCallback, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import MapComponent from '@/components/map/MapComponent';
-import { ParkingCard } from '@/components/parking/ParkingCard';
+// import { ParkingCard } from '@/components/parking/ParkingCard'; // Replaced by ParkingSlotCard
+import { ParkingSlotCard } from '@/components/parking/ParkingSlotCard';
 import type { ParkingSpace, ParkingFeature } from '@/types';
 import { ParkingPreferenceFilter, type ParkingFilters } from '@/components/booking/ParkingPreferenceFilter';
 import { PageTitle } from '@/components/core/PageTitle';
@@ -14,7 +15,6 @@ import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardContent, CardFooter } from '@/components/ui/card';
 import { Search as SearchIcon, ListFilter, Map, Loader2, AlertTriangle, Info } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-// import { getDistanceFromLatLonInKm } from '@/lib/geoUtils'; // Not directly used here, AI handles distance logic
 import { findParkingSpots, type FindParkingInput } from '@/ai/flows/find-parking-flow';
 
 const DEFAULT_MAP_CENTER_HYD = { lat: 17.3850, lng: 78.4867 }; // Hyderabad
@@ -25,12 +25,12 @@ function SearchPageComponent() {
   const mainSearchInputRef = useRef<HTMLInputElement>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [rawAiSpaces, setRawAiSpaces] = useState<ParkingSpace[]>([]);
-  const [displayedSpaces, setDisplayedSpaces] = useState<ParkingSpace[]>([]);
+  const [rawAiSpaces, setRawAiSpaces] = useState<ParkingSpace[]>([]); // Now holds slots
+  const [displayedSpaces, setDisplayedSpaces] = useState<ParkingSpace[]>([]); // Now holds slots
 
   const [isLoading, setIsLoading] = useState(false);
-  const [viewMode, setViewMode] = useState<'map' | 'list'>('list');
-  const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null);
+  // const [viewMode, setViewMode] = useState<'map' | 'list'>('list'); // Grid is the new list view
+  const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null); // Might be less relevant if map clicks re-search
 
   const [mapCenterForView, setMapCenterForView] = useState<{ lat: number; lng: number } | null>(null);
   const [activeSearchCenter, setActiveSearchCenter] = useState<{ lat: number; lng: number } | null>(null);
@@ -69,13 +69,13 @@ function SearchPageComponent() {
     }
     setSearchQuery(urlLocation);
     if (urlLocation || initialActiveCenter) {
-      setSearchAttempted(true); // If URL provides search params, consider it an attempt
+      setSearchAttempted(true); 
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Parse URL params on initial mount
+  }, []); 
 
   const performAiSearch = useCallback(async (location: string, radius: number, features: ParkingFeature[]) => {
-    if (!location.trim() && !activeSearchCenter) { // Require either a location string or an active map center
+    if (!location.trim() && !activeSearchCenter) { 
       setRawAiSpaces([]);
       setIsLoading(false);
       return;
@@ -84,7 +84,7 @@ function SearchPageComponent() {
     setIsLoading(true);
     setSearchAttempted(true);
     const effectiveLocation = location.trim() || (activeSearchCenter ? `area around ${activeSearchCenter.lat.toFixed(4)}, ${activeSearchCenter.lng.toFixed(4)}` : "current map view");
-    console.log(`Performing AI Search for: ${effectiveLocation}, Radius: ${radius}km, Features: ${features.join(', ')}`);
+    console.log(`Performing AI Slot Search for: ${effectiveLocation}, Radius: ${radius}km, Features: ${features.join(', ')}`);
 
     try {
       const aiInput: FindParkingInput = {
@@ -92,25 +92,23 @@ function SearchPageComponent() {
         searchRadiusKm: radius,
         desiredFeatures: features.length > 0 ? features : undefined,
       };
-      const results = await findParkingSpots(aiInput);
+      const results = await findParkingSpots(aiInput); // This now returns slots
       setRawAiSpaces(results);
 
-      // If AI returns results and no specific map center is set by user interaction,
-      // try to center map on first result OR keep activeSearchCenter if it exists.
       if (results.length > 0) {
-        if (!activeSearchCenter && !mapCenterForView) { // Only if no center is set at all
-           setMapCenterForView(results[0].coordinates);
+        if (!activeSearchCenter && !mapCenterForView) { 
+           setMapCenterForView(results[0].facilityCoordinates);
         } else if (activeSearchCenter) {
-            setMapCenterForView(activeSearchCenter); // Prefer map interaction center
+            setMapCenterForView(activeSearchCenter); 
         }
       } else if (activeSearchCenter) {
         setMapCenterForView(activeSearchCenter);
-      } else if (!mapCenterForView) { // No results, no active center, no view center yet
+      } else if (!mapCenterForView) { 
         setMapCenterForView(DEFAULT_MAP_CENTER_HYD);
       }
 
     } catch (error) {
-      console.error("Error fetching parking spots from AI:", error);
+      console.error("Error fetching parking slots from AI:", error);
       setRawAiSpaces([]);
     } finally {
       setIsLoading(false);
@@ -122,13 +120,15 @@ function SearchPageComponent() {
     const locationToSearch = searchQuery.trim();
     if (userSetFilters && (locationToSearch || activeSearchCenter)) {
       const searchRadius = radiusOverride ?? userSetFilters.distanceMax;
+      const desiredFeaturesForAI = userSetFilters.features; // Pass all selected features
+      
       performAiSearch(
         locationToSearch,
         searchRadius,
-        userSetFilters.features
+        desiredFeaturesForAI
       );
       if (radiusOverride) {
-        setRadiusOverride(null); // Reset override after use
+        setRadiusOverride(null); 
       }
     } else if (userSetFilters && !locationToSearch && !activeSearchCenter) {
         setRawAiSpaces([]);
@@ -139,60 +139,59 @@ function SearchPageComponent() {
   useEffect(() => {
     let filtered = [...rawAiSpaces];
     if (userSetFilters) {
-      filtered = filtered.filter(space =>
-        space.pricePerHour >= userSetFilters.priceRange[0] &&
-        space.pricePerHour <= userSetFilters.priceRange[1] &&
-        (space.rating || 0) >= userSetFilters.ratingMin
+      // Client-side filtering for price and rating applied to AI results
+      filtered = filtered.filter(slot =>
+        (slot.pricePerHour === undefined || (slot.pricePerHour >= userSetFilters.priceRange[0] && slot.pricePerHour <= userSetFilters.priceRange[1])) &&
+        (slot.facilityRating === undefined || slot.facilityRating >= userSetFilters.ratingMin)
       );
+      // Client-side filtering for slotType if needed, though AI should handle this primarily
+      if (userSetFilters.features.includes('ev-charging') && !userSetFilters.features.includes('disabled-access')) {
+        filtered = filtered.filter(slot => slot.slotType === 'ev-charging' || slot.slotType === 'standard');
+      } else if (userSetFilters.features.includes('disabled-access') && !userSetFilters.features.includes('ev-charging')) {
+         filtered = filtered.filter(slot => slot.slotType === 'accessible' || slot.slotType === 'standard');
+      } else if (userSetFilters.features.includes('ev-charging') && userSetFilters.features.includes('disabled-access')) {
+        // Allow all if both specific types are requested (AI should provide variety)
+      } else if (userSetFilters.features.length > 0) {
+        // If other general features are selected, we rely on AI to have considered them for facility context.
+        // No direct client-side slotType filtering for 'covered', 'cctv' etc. as they are facility features.
+      }
     }
-    // Text filtering is now implicitly handled by AI if searchQuery is primary input
-    // If AI returns broader results, this could be re-added:
-    // if (searchQuery.trim()) {
-    //     filtered = filtered.filter(space =>
-    //       space.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    //       space.address.toLowerCase().includes(searchQuery.toLowerCase())
-    //     );
-    // }
     setDisplayedSpaces(filtered);
   }, [rawAiSpaces, userSetFilters]);
 
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Update URL, AI search will be triggered by useEffect watching searchQuery
     router.push(`/search?location=${encodeURIComponent(searchQuery)}`, { scroll: false });
     setSearchAttempted(true);
-    setRadiusOverride(null); // Clear any specific radius override when doing a new manual search
-    // setActiveSearchCenter(null); // Optionally clear active map center to prioritize text query
+    setRadiusOverride(null); 
   };
 
   const handleApplyFilters = useCallback((filters: ParkingFilters) => {
     setUserSetFilters(filters);
-    setRadiusOverride(null); // Applying filters should use the filter's distance, not an override
+    setRadiusOverride(null); 
     setSearchAttempted(true);
   }, []);
 
-  const handleMarkerClick = useCallback((spaceId: string) => {
-    setSelectedSpaceId(spaceId);
-    setViewMode('list');
-    const element = document.getElementById(`space-card-${spaceId}`);
-    element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    element?.classList.add('ring-2', 'ring-primary', 'shadow-2xl');
-    setTimeout(() => element?.classList.remove('ring-2', 'ring-primary', 'shadow-2xl'), 2000);
-
-    const clickedSpace = displayedSpaces.find(s => s.id === spaceId);
-    if (clickedSpace) {
-      setSearchQuery(clickedSpace.name);
-      setActiveSearchCenter(clickedSpace.coordinates);
-      setMapCenterForView(clickedSpace.coordinates);
-      setRadiusOverride(1); // Trigger search within 1km of this clicked pin
+  const handleMarkerClick = useCallback((markerId: string) => {
+    // markerId is the slot.id. Find the slot to get its facilityCoordinates
+    const clickedSlot = rawAiSpaces.find(s => s.id === markerId);
+    if (clickedSlot) {
+      setSelectedSpaceId(markerId); // Keep track if needed for highlighting
+      setSearchQuery(clickedSlot.facilityName); // Search for the facility name
+      setActiveSearchCenter(clickedSlot.facilityCoordinates);
+      setMapCenterForView(clickedSlot.facilityCoordinates);
+      setRadiusOverride(1); // Trigger AI search within 1km of this facility
+      
+      // Scroll to top of results or map for better UX
+      window.scrollTo({ top: mainSearchInputRef.current?.offsetTop || 0, behavior: 'smooth' });
     }
-  }, [displayedSpaces]);
+  }, [rawAiSpaces]);
 
   const handleMapIdle = useCallback((center: { lat: number; lng: number }) => {
     setActiveSearchCenter(center);
-    setMapCenterForView(center); // Keep map view synced
-    setRadiusOverride(null); // Panning/zooming should use general filters, not specific override
+    setMapCenterForView(center); 
+    setRadiusOverride(null); 
     setSearchAttempted(true);
   }, []);
 
@@ -204,7 +203,7 @@ function SearchPageComponent() {
       setSearchQuery(newSearchQuery);
       setMapCenterForView(newCenter);
       setActiveSearchCenter(newCenter);
-      setRadiusOverride(null); // New place selection uses general filters or a default like 2km from homepage
+      setRadiusOverride(null); 
       setSearchAttempted(true);
       router.push(`/search?location=${encodeURIComponent(newSearchQuery)}&lat=${newCenter.lat}&lng=${newCenter.lng}`, { scroll: false });
     }
@@ -215,16 +214,16 @@ function SearchPageComponent() {
       return (
         <div className="text-center py-10 text-muted-foreground bg-card rounded-lg shadow p-6">
           <Info className="mx-auto h-12 w-12 mb-4 text-primary" />
-          <p className="text-lg font-medium text-foreground">Find Parking Near You</p>
-          <p className="text-sm">Enter a location in the search bar, apply filters, or pan the map. Parking spots generated by AI will appear here.</p>
+          <p className="text-lg font-medium text-foreground">Find Parking Slots</p>
+          <p className="text-sm">Enter a location, apply filters, or pan the map. AI-generated parking slots will appear here.</p>
         </div>
       );
     }
     return (
       <div className="text-center py-10 text-muted-foreground bg-card rounded-lg shadow p-6">
         <AlertTriangle className="mx-auto h-12 w-12 mb-4 text-accent" />
-        <p className="text-lg font-medium text-foreground">No Parking Spots Found by AI</p>
-        <p className="text-sm">Try adjusting your search term, filters, or map location. Our AI generates fictional spots based on your query.</p>
+        <p className="text-lg font-medium text-foreground">No Parking Slots Found by AI</p>
+        <p className="text-sm">Try adjusting your search term, filters, or map location. Our AI generates fictional slots based on your query.</p>
       </div>
     );
   }
@@ -233,7 +232,7 @@ function SearchPageComponent() {
     <div className="flex flex-col min-h-screen">
       <Header />
       <main className="flex-grow container mx-auto px-4 md:px-6 py-8">
-        <PageTitle title="AI-Powered Parking Finder" description="Search by location and filter by your preferences. Our AI will find fictional spots for you!" />
+        <PageTitle title="AI Parking Slot Finder" description="Search by location and filter preferences. Our AI will generate fictional parking slots for you!" />
 
         <form onSubmit={handleSearchSubmit} className="mb-8 flex flex-col sm:flex-row gap-3">
           <div className="relative flex-grow">
@@ -254,72 +253,52 @@ function SearchPageComponent() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-4 xl:col-span-3">
-             <div className="sticky top-20">
+             <div className="sticky top-20"> {/* Ensure header height is accounted for if header is sticky */}
                 <ParkingPreferenceFilter onApplyFilters={handleApplyFilters} />
              </div>
           </div>
 
           <div className="lg:col-span-8 xl:col-span-9">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">
-                {isLoading ? 'AI is Searching...' : `${displayedSpaces.length} Parking Spots Found`}
-              </h2>
-              <div className="flex gap-2">
-                <Button variant={viewMode === 'list' ? 'secondary' : 'outline'} size="icon" onClick={() => setViewMode('list')} title="List View">
-                  <ListFilter className="h-5 w-5" />
-                </Button>
-                <Button variant={viewMode === 'map' ? 'secondary' : 'outline'} size="icon" onClick={() => setViewMode('map')} title="Map View">
-                  <Map className="h-5 w-5" />
-                </Button>
-              </div>
-            </div>
-
-            <div className={`mb-6 h-[600px] rounded-lg overflow-hidden shadow-xl ${viewMode === 'map' || displayedSpaces.length === 0 ? '' : 'hidden lg:block'}`}>
+            <div className="mb-6 h-[400px] md:h-[500px] rounded-lg overflow-hidden shadow-xl">
                  <MapComponent
-                    markers={displayedSpaces.map(s => ({ id: s.id, lat: s.coordinates.lat, lng: s.coordinates.lng, label: s.name }))}
+                    markers={displayedSpaces.map(s => ({ id: s.id, lat: s.facilityCoordinates.lat, lng: s.facilityCoordinates.lng, label: s.facilityName }))}
                     center={mapCenterForView}
                     onMarkerClick={handleMarkerClick}
                     interactive={true}
-                    showSearchInput={true}
-                    autocompleteInputRef={mainSearchInputRef}
+                    showSearchInput={true} // Map's own search input
+                    autocompleteInputRef={mainSearchInputRef} // Connects main search to map
                     showMyLocationButton={true}
                     onPlaceSelected={handlePlaceSelectedOnMapOrInput}
                     onMapIdle={handleMapIdle}
                 />
             </div>
+            
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">
+                {isLoading ? 'AI is Searching for Slots...' : `${displayedSpaces.length} Parking Slots Found`}
+              </h2>
+              {/* View mode toggle removed as grid is the primary view now for slots */}
+            </div>
 
             {isLoading ? (
-              <div className={`grid grid-cols-1 ${viewMode === 'list' ? 'md:grid-cols-2' : 'md:grid-cols-1'} gap-6`}>
-                {[...Array(4)].map((_, i) => (
-                  <Card key={i} className="w-full">
-                    <Skeleton className="h-48 w-full" />
-                    <CardHeader><Skeleton className="h-6 w-3/4" /><Skeleton className="h-4 w-1/2 mt-1" /></CardHeader>
-                    <CardContent className="space-y-2"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-2/3" /></CardContent>
-                    <CardFooter><Skeleton className="h-10 w-full" /></CardFooter>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+                {[...Array(10)].map((_, i) => ( // Skeleton for smaller slot cards
+                  <Card key={i} className="w-full aspect-[3/4]"> {/* Adjust aspect ratio as needed */}
+                    <CardContent className="p-2 sm:p-3 flex flex-col justify-center items-center h-full">
+                      <Skeleton className="h-5 w-1/2 mb-1" />
+                      <Skeleton className="h-4 w-3/4 mb-2" />
+                      <Skeleton className="h-8 w-8 rounded-full mb-2" />
+                      <Skeleton className="h-6 w-full" />
+                    </CardContent>
                   </Card>
                 ))}
               </div>
             ) : displayedSpaces.length === 0 ? (
-              <div className={`${viewMode === 'list' ? '' : 'hidden lg:hidden'}`}> {/* Hide message if map is primary and has content, or always show below map on mobile */}
-                {noResultsMessage()}
-              </div>
+                noResultsMessage()
             ) : (
-               viewMode === 'list' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {displayedSpaces.map(space => (
-                    <div key={space.id} id={`space-card-${space.id}`}>
-                        <ParkingCard space={space} />
-                    </div>
-                    ))}
-                </div>
-               )
-            )}
-            {viewMode === 'map' && displayedSpaces.length > 0 && (
-                 <div className="lg:hidden mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {displayedSpaces.slice(0,4).map(space => (
-                    <div key={space.id} id={`space-card-mobile-${space.id}`}>
-                        <ParkingCard space={space} />
-                    </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+                    {displayedSpaces.map(slot => (
+                        <ParkingSlotCard key={slot.id} space={slot} />
                     ))}
                 </div>
             )}

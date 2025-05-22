@@ -1,124 +1,124 @@
 
 'use server';
 /**
- * @fileOverview A Genkit flow to find and generate fictional parking space suggestions.
+ * @fileOverview A Genkit flow to find and generate fictional parking slot suggestions.
  *
- * - findParkingSpots - A function that uses an AI model to generate parking spots.
+ * - findParkingSpots - A function that uses an AI model to generate parking slots.
  * - FindParkingInput - The input type for the findParkingSpots function.
  * - FindParkingOutput - The return type for the findParkingSpots function.
  */
 
 import { ai } from '@/ai/genkit';
-import type { ParkingSpace, ParkingFeature } from '@/types';
+import type { ParkingSpace, ParkingFeature } from '@/types'; // ParkingFeature for input still
 import { z } from 'genkit';
 
-// Define a Zod schema for individual parking spaces consistent with the ParkingSpace type
-const ParkingSpaceSchema = z.object({
-  id: z.string().describe("A unique identifier for the parking space, e.g., 'ai-park-123'."),
-  name: z.string().describe("A plausible name for the parking facility."),
-  address: z.string().describe("A plausible street address for the parking facility, relevant to the searched location."),
-  coordinates: z.object({
-    lat: z.number().describe("Latitude, a plausible value near the searched location and within the specified radius."),
-    lng: z.number().describe("Longitude, a plausible value near the searched location and within the specified radius."),
-  }).describe("Geographical coordinates of the parking space."),
-  availability: z.enum(['high', 'medium', 'low', 'full']).describe("Current estimated availability status."),
-  pricePerHour: z.number().positive().describe("Price per hour in a standard currency (e.g., USD)."),
-  features: z.array(z.enum(['covered', 'ev-charging', 'cctv', 'disabled-access', 'well-lit', 'secure'])).describe("List of features available at the parking space."),
-  imageUrl: z.string().url().describe("A placeholder image URL, should be 'https://placehold.co/600x400.png'."),
-  dataAiHint: z.string().describe("A two-word hint for the placeholder image, e.g., 'parking garage' or 'city parking'."),
-  rating: z.number().min(1).max(5).optional().describe("A user rating between 1 and 5."),
-  totalSpots: z.number().int().positive().optional().describe("Total number of spots in the facility."),
-  availableSpots: z.number().int().min(0).optional().describe("Number of currently available spots. Should be less than or equal to totalSpots."),
+// Define a Zod schema for individual parking SLOTS consistent with the ParkingSpace type
+const ParkingSlotSchema = z.object({
+  id: z.string().describe("A unique identifier for the parking slot, e.g., 'slot-ai-park-123-s5'."),
+  slotLabel: z.string().describe("A label for the slot, e.g., '#5' or 'A-03'."),
+  floorLevel: z.string().describe("The floor or level where the slot is located, e.g., 'Floor 1', 'P2', 'Basement Level A'."),
+  isOccupied: z.boolean().describe("Whether the slot is currently occupied."),
+  vehicleIdOccupying: z.string().optional().describe("The vehicle ID (e.g., license plate) occupying the slot, if 'isOccupied' is true."),
+  occupiedSince: z.string().optional().describe("A short string indicating when the slot was occupied, if 'isOccupied' is true (e.g., 'Since: 9:42 AM', '2 hours ago')."),
+  slotType: z.enum(['standard', 'accessible', 'ev-charging']).describe("The type of the parking slot. Choose one: 'standard', 'accessible', 'ev-charging'. This will determine the icon used."),
+  
+  facilityName: z.string().describe("The name of the parking facility or area these slots belong to. Can be the same for multiple slots if they are in the same facility."),
+  facilityAddress: z.string().describe("The street address of the parking facility, relevant to the searched location."),
+  facilityCoordinates: z.object({
+    lat: z.number().describe("Latitude of the facility, plausible value near the searched location."),
+    lng: z.number().describe("Longitude of the facility, plausible value near the searched location."),
+  }).describe("Geographical coordinates of the parking facility."),
+  pricePerHour: z.number().positive().optional().describe("Price per hour for this type of slot in this facility (e.g., USD)."),
+  
+  imageUrl: z.string().url().optional().describe("A placeholder image URL for the FACILITY, should be 'https://placehold.co/600x400.png'."),
+  dataAiHint: z.string().optional().describe("A two-word hint for the placeholder FACILITY image, e.g., 'parking garage' or 'city parking'."),
+  facilityRating: z.number().min(1).max(5).optional().describe("An overall user rating for the facility between 1 and 5."),
+
+  // Facility-wide context, might be redundant if AI focuses on slots but good for realism
+  availability: z.enum(['high', 'medium', 'low', 'full']).optional().describe("Overall availability in the FACILITY (less critical for individual slot status)."),
+  features: z.array(z.enum(['covered', 'ev-charging', 'cctv', 'disabled-access', 'well-lit', 'secure'])).optional().describe("List of general features of the FACILITY."),
+  totalSpots: z.number().int().positive().optional().describe("Total number of spots in the FACILITY."),
+  availableSpots: z.number().int().min(0).optional().describe("Number of currently available spots in the FACILITY."),
 });
 
-// NOT EXPORTED: Zod schema objects
+
 const FindParkingInputSchema = z.object({
   locationName: z.string().describe('The name of the location or area to search for parking, e.g., "Downtown Hyderabad" or "Near Charminar".'),
   searchRadiusKm: z.number().positive().describe('The search radius in kilometers around the locationName.'),
-  desiredFeatures: z.array(z.enum(['covered', 'ev-charging', 'cctv', 'disabled-access', 'well-lit', 'secure'])).optional().describe('A list of desired features for the parking spots.'),
+  desiredFeatures: z.array(z.enum(['covered', 'ev-charging', 'cctv', 'disabled-access', 'well-lit', 'secure'])).optional().describe('A list of desired general facility features for the parking spots.'),
 });
 export type FindParkingInput = z.infer<typeof FindParkingInputSchema>;
 
-// NOT EXPORTED: Zod schema objects
+
 const FindParkingOutputSchema = z.object({
-  parkingSpaces: z.array(ParkingSpaceSchema).describe('A list of 3 to 5 generated fictional parking spots.'),
+  parkingSlots: z.array(ParkingSlotSchema).describe('A list of 10 to 15 generated fictional parking slots. These slots can be from one or more conceptual facilities relevant to the search query.'),
 });
 export type FindParkingOutput = z.infer<typeof FindParkingOutputSchema>;
 
 
 const findParkingPrompt = ai.definePrompt({
-  name: 'findParkingPrompt',
+  name: 'findParkingSlotsPrompt', // Renamed for clarity
   input: { schema: FindParkingInputSchema },
   output: { schema: FindParkingOutputSchema },
-  prompt: `You are an AI assistant that helps users find fictional parking spots for a prototype application.
-Given a location name ({{{locationName}}}), a search radius of {{{searchRadiusKm}}} km, and optionally, a list of desired features ({{#if desiredFeatures}}{{#each desiredFeatures}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}any{{/if}}), please generate a list of 3 to 5 distinct, fictional parking spots.
+  prompt: `You are an AI assistant that helps users find fictional parking slots for a prototype application.
+Given a location name ({{{locationName}}}), a search radius of {{{searchRadiusKm}}} km, and optionally, a list of desired general facility features ({{#if desiredFeatures}}{{#each desiredFeatures}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}any{{/if}}), please generate a list of 10 to 15 distinct, fictional parking SLOTS. These slots can be from one or multiple conceptual parking facilities that would plausibly be in the searched area.
 
-For each parking spot, you must provide the following details:
-- id: A unique identifier string, like 'ai-park-XYZ'.
-- name: A plausible name for the parking facility (e.g., "City Center Garage", "SecureTech Parking Hitech City").
-- address: A plausible street address relevant to the "{{{locationName}}}".
-- coordinates: An object with 'lat' and 'lng' (latitude and longitude). These coordinates should be plausible for the given "{{{locationName}}}" and fall roughly within the {{{searchRadiusKm}}} km radius. Make them distinct for each spot.
-- availability: Current estimated availability, choose one from: 'high', 'medium', 'low', 'full'.
-- pricePerHour: A reasonable price per hour (e.g., between 1.0 and 5.0).
-- features: An array of strings, listing features available. If specific desiredFeatures were provided, try to include some of them. Allowed features are: 'covered', 'ev-charging', 'cctv', 'disabled-access', 'well-lit', 'secure'.
-- imageUrl: This must be exactly 'https://placehold.co/600x400.png'.
-- dataAiHint: A two-word hint for the placeholder image, e.g., "parking garage" or "city parking".
-- rating: (Optional) A user rating between 1.0 and 5.0.
-- totalSpots: (Optional) Total number of spots in the facility (e.g., 50 to 200).
-- availableSpots: (Optional) Number of currently available spots (must be less than or equal to totalSpots). If availability is 'full', availableSpots should be 0.
+For each parking SLOT, you must provide the following details:
+- id: A unique identifier string for the slot, like 'slot-ai-xyz-s1'.
+- slotLabel: A short label for the slot, like "#12" or "B-07".
+- floorLevel: The floor or level, like "Floor 1", "P3", "Ground Level".
+- isOccupied: A boolean (true or false) indicating if the slot is currently occupied.
+- vehicleIdOccupying: (Only if isOccupied is true) A fictional vehicle license plate or ID, like "TS09AB1234".
+- occupiedSince: (Only if isOccupied is true) A short string indicating when it was occupied, like "Since: 10:15 AM" or "1 hr ago".
+- slotType: Choose one type for the slot: 'standard', 'accessible', or 'ev-charging'. This is important for the UI. If user requested 'ev-charging' or 'disabled-access' as a desired feature, try to include slots of that type.
+- facilityName: The name of the parking facility this slot belongs to (e.g., "TechPark Central Parking", "Market Square Garage"). Make up 1-3 plausible facility names and distribute the 10-15 slots among them.
+- facilityAddress: A plausible street address for the facility, relevant to "{{{locationName}}}".
+- facilityCoordinates: An object with 'lat' and 'lng' for the FACILITY. These coordinates should be plausible for "{{{locationName}}}" and fall roughly within the {{{searchRadiusKm}}} km radius. Slots within the same facility should share these coordinates.
+- pricePerHour: (Optional) A reasonable price per hour for this slot type/facility (e.g., between 1.0 and 5.0).
+- imageUrl: (Optional) This must be exactly 'https://placehold.co/600x400.png' for the FACILITY.
+- dataAiHint: (Optional) A two-word hint for the placeholder FACILITY image, e.g., "parking garage" or "city parking".
+- facilityRating: (Optional) An overall rating for the FACILITY (1.0-5.0).
 
-Ensure the generated parking spots are varied.
+Ensure the generated slots are varied in their occupancy status and type. If 'desiredFeatures' includes 'ev-charging' or 'disabled-access', make sure to generate some slots with matching 'slotType'.
+The primary output should be the list of individual parking slots.
 `,
 });
 
 const findParkingGenkitFlow = ai.defineFlow(
   {
-    name: 'findParkingGenkitFlow',
+    name: 'findParkingSlotsGenkitFlow', // Renamed
     inputSchema: FindParkingInputSchema,
     outputSchema: FindParkingOutputSchema,
   },
-  async (input) => {
-    // In a real scenario, you might add pre-processing or call external APIs here.
-    // For instance, geocoding locationName to get precise coordinates if the model needs it.
-    
+  async (input) => {    
     const { output } = await findParkingPrompt(input);
     if (!output) {
-        // Handle the case where the prompt might not return output as expected.
-        // This could be due to safety settings or other model constraints.
-        console.warn('AI prompt did not return output for findParkingGenkitFlow. Input:', input);
-        return { parkingSpaces: [] };
+        console.warn('AI prompt did not return output for findParkingSlotsGenkitFlow. Input:', input);
+        return { parkingSlots: [] };
     }
 
-    // Post-processing: Ensure availableSpots is consistent with totalSpots and availability
-    const processedSpaces = output.parkingSpaces.map(space => {
-        let processedSpace = { ...space };
-        if (processedSpace.totalSpots !== undefined && processedSpace.availableSpots !== undefined) {
-            processedSpace.availableSpots = Math.min(processedSpace.availableSpots, processedSpace.totalSpots);
+    // Post-processing can be added here if needed, e.g. to ensure consistency.
+    // For example, ensure vehicleIdOccupying and occupiedSince are null if isOccupied is false.
+    const processedSlots = output.parkingSlots.map(slot => {
+        let processedSlot = { ...slot } as ParkingSpace; // Cast to use ParkingSpace type from '@/types'
+        if (!processedSlot.isOccupied) {
+            processedSlot.vehicleIdOccupying = undefined;
+            processedSlot.occupiedSince = undefined;
         }
-        if (processedSpace.availability === 'full') {
-            processedSpace.availableSpots = 0;
-        } else if (processedSpace.availability === 'high' && processedSpace.totalSpots && (processedSpace.availableSpots === undefined || processedSpace.availableSpots < processedSpace.totalSpots / 2) ) {
-            processedSpace.availableSpots = Math.floor(processedSpace.totalSpots * 0.75) || processedSpace.availableSpots; // Ensure high means many spots
+        if (!processedSlot.imageUrl) { // Ensure placeholder if AI misses it
+            processedSlot.imageUrl = 'https://placehold.co/600x400.png';
+            processedSlot.dataAiHint = 'parking area';
         }
-        // Add dataAiHint if missing, as it's now required by ParkingSpace but optional in schema for AI flexibility
-        if (!processedSpace.dataAiHint) {
-            processedSpace.dataAiHint = "parking lot"; // Default hint
-        }
-        return processedSpace as ParkingSpace; // Cast to ensure type compatibility after processing
+        return processedSlot;
     });
 
-    return { parkingSpaces: processedSpaces };
+    return { parkingSlots: processedSlots };
   }
 );
 
 export async function findParkingSpots(input: FindParkingInput): Promise<ParkingSpace[]> {
   const result = await findParkingGenkitFlow(input);
-  return result.parkingSpaces;
+  return result.parkingSlots;
 }
 
-// Helper to add dataAiHint to ParkingSpace type as it was missing
-declare module '@/types' {
-    interface ParkingSpace {
-        dataAiHint?: string; // Make it optional in base type to match AI behavior if needed
-    }
-}
+// No longer need the ParkingSpace declare module augmentation here as ParkingSpace type in src/types will be updated
