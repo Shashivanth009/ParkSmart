@@ -3,7 +3,6 @@
 import { useEffect, useState, Suspense, useCallback, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import MapComponent from '@/components/map/MapComponent';
-// import { ParkingCard } from '@/components/parking/ParkingCard'; // Replaced by ParkingSlotCard
 import { ParkingSlotCard } from '@/components/parking/ParkingSlotCard';
 import type { ParkingSpace, ParkingFeature } from '@/types';
 import { ParkingPreferenceFilter, type ParkingFilters } from '@/components/booking/ParkingPreferenceFilter';
@@ -25,14 +24,13 @@ function SearchPageComponent() {
   const mainSearchInputRef = useRef<HTMLInputElement>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [rawAiSpaces, setRawAiSpaces] = useState<ParkingSpace[]>([]); // Now holds slots
-  const [displayedSpaces, setDisplayedSpaces] = useState<ParkingSpace[]>([]); // Now holds slots
+  const [rawAiSpaces, setRawAiSpaces] = useState<ParkingSpace[]>([]);
+  const [displayedSpaces, setDisplayedSpaces] = useState<ParkingSpace[]>([]);
 
   const [isLoading, setIsLoading] = useState(false);
-  // const [viewMode, setViewMode] = useState<'map' | 'list'>('list'); // Grid is the new list view
-  const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null); // Might be less relevant if map clicks re-search
+  const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null);
 
-  const [mapCenterForView, setMapCenterForView] = useState<{ lat: number; lng: number } | null>(null);
+  const [mapCenterForView, setMapCenterForView] = useState<{ lat: number; lng: number }>(DEFAULT_MAP_CENTER_HYD);
   const [activeSearchCenter, setActiveSearchCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [userSetFilters, setUserSetFilters] = useState<ParkingFilters | null>(null);
   const [searchAttempted, setSearchAttempted] = useState(false);
@@ -47,6 +45,7 @@ function SearchPageComponent() {
 
     let initialCenter = DEFAULT_MAP_CENTER_HYD;
     let initialActiveCenter: { lat: number; lng: number } | null = null;
+    let initialRadiusOverride: number | null = null;
 
     if (urlLat && urlLng) {
       const lat = parseFloat(urlLat);
@@ -57,22 +56,22 @@ function SearchPageComponent() {
         if (urlRadius) {
           const radius = parseFloat(urlRadius);
           if (!isNaN(radius) && radius > 0) {
-            setRadiusOverride(radius);
+            initialRadiusOverride = radius;
           }
         }
       }
     }
-
+    
     setMapCenterForView(initialCenter);
-    if (initialActiveCenter) {
-      setActiveSearchCenter(initialActiveCenter);
-    }
+    if (initialActiveCenter) setActiveSearchCenter(initialActiveCenter);
+    if (initialRadiusOverride) setRadiusOverride(initialRadiusOverride);
     setSearchQuery(urlLocation);
+
     if (urlLocation || initialActiveCenter) {
       setSearchAttempted(true); 
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); 
+  }, []); // Run once on mount to parse URL
 
   const performAiSearch = useCallback(async (location: string, radius: number, features: ParkingFeature[]) => {
     if (!location.trim() && !activeSearchCenter) { 
@@ -92,35 +91,31 @@ function SearchPageComponent() {
         searchRadiusKm: radius,
         desiredFeatures: features.length > 0 ? features : undefined,
       };
-      const results = await findParkingSpots(aiInput); // This now returns slots
+      const results = await findParkingSpots(aiInput);
       setRawAiSpaces(results);
 
-      if (results.length > 0) {
-        if (!activeSearchCenter && !mapCenterForView) { 
-           setMapCenterForView(results[0].facilityCoordinates);
-        } else if (activeSearchCenter) {
-            setMapCenterForView(activeSearchCenter); 
-        }
+      if (results.length > 0 && !activeSearchCenter) {
+        // If AI found results and we didn't have an active search center (e.g. from text search only)
+        // Set map center to the first result's facility
+        setMapCenterForView(results[0].facilityCoordinates);
       } else if (activeSearchCenter) {
-        setMapCenterForView(activeSearchCenter);
-      } else if (!mapCenterForView) { 
-        setMapCenterForView(DEFAULT_MAP_CENTER_HYD);
+        setMapCenterForView(activeSearchCenter); 
       }
-
+      
     } catch (error) {
       console.error("Error fetching parking slots from AI:", error);
       setRawAiSpaces([]);
     } finally {
       setIsLoading(false);
     }
-  }, [activeSearchCenter, mapCenterForView]);
+  }, [activeSearchCenter]);
 
 
   useEffect(() => {
     const locationToSearch = searchQuery.trim();
-    if (userSetFilters && (locationToSearch || activeSearchCenter)) {
+    if (userSetFilters && (locationToSearch || activeSearchCenter || searchAttempted)) {
       const searchRadius = radiusOverride ?? userSetFilters.distanceMax;
-      const desiredFeaturesForAI = userSetFilters.features; // Pass all selected features
+      const desiredFeaturesForAI = userSetFilters.features;
       
       performAiSearch(
         locationToSearch,
@@ -130,30 +125,26 @@ function SearchPageComponent() {
       if (radiusOverride) {
         setRadiusOverride(null); 
       }
-    } else if (userSetFilters && !locationToSearch && !activeSearchCenter) {
-        setRawAiSpaces([]);
+    } else if (userSetFilters && !locationToSearch && !activeSearchCenter && searchAttempted) {
+        setRawAiSpaces([]); // Clear results if search was attempted with no criteria
     }
-  }, [searchQuery, activeSearchCenter, userSetFilters, radiusOverride, performAiSearch]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, activeSearchCenter, userSetFilters, radiusOverride, searchAttempted]);
 
 
   useEffect(() => {
     let filtered = [...rawAiSpaces];
     if (userSetFilters) {
-      // Client-side filtering for price and rating applied to AI results
       filtered = filtered.filter(slot =>
         (slot.pricePerHour === undefined || (slot.pricePerHour >= userSetFilters.priceRange[0] && slot.pricePerHour <= userSetFilters.priceRange[1])) &&
         (slot.facilityRating === undefined || slot.facilityRating >= userSetFilters.ratingMin)
       );
-      // Client-side filtering for slotType if needed, though AI should handle this primarily
       if (userSetFilters.features.includes('ev-charging') && !userSetFilters.features.includes('disabled-access')) {
         filtered = filtered.filter(slot => slot.slotType === 'ev-charging' || slot.slotType === 'standard');
       } else if (userSetFilters.features.includes('disabled-access') && !userSetFilters.features.includes('ev-charging')) {
          filtered = filtered.filter(slot => slot.slotType === 'accessible' || slot.slotType === 'standard');
       } else if (userSetFilters.features.includes('ev-charging') && userSetFilters.features.includes('disabled-access')) {
-        // Allow all if both specific types are requested (AI should provide variety)
-      } else if (userSetFilters.features.length > 0) {
-        // If other general features are selected, we rely on AI to have considered them for facility context.
-        // No direct client-side slotType filtering for 'covered', 'cctv' etc. as they are facility features.
+        // Allow all if both specific types are requested
       }
     }
     setDisplayedSpaces(filtered);
@@ -163,42 +154,44 @@ function SearchPageComponent() {
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     router.push(`/search?location=${encodeURIComponent(searchQuery)}`, { scroll: false });
-    setSearchAttempted(true);
+    setActiveSearchCenter(null); // Let text search take precedence, or map interaction will refine
     setRadiusOverride(null); 
+    setSearchAttempted(true);
   };
 
   const handleApplyFilters = useCallback((filters: ParkingFilters) => {
     setUserSetFilters(filters);
     setRadiusOverride(null); 
-    setSearchAttempted(true);
+    setSearchAttempted(true); // Trigger search if filters applied
   }, []);
 
   const handleMarkerClick = useCallback((markerId: string) => {
-    // markerId is the slot.id. Find the slot to get its facilityCoordinates
     const clickedSlot = rawAiSpaces.find(s => s.id === markerId);
     if (clickedSlot) {
-      setSelectedSpaceId(markerId); // Keep track if needed for highlighting
-      setSearchQuery(clickedSlot.facilityName); // Search for the facility name
+      setSelectedSpaceId(markerId);
+      setSearchQuery(clickedSlot.facilityName);
       setActiveSearchCenter(clickedSlot.facilityCoordinates);
       setMapCenterForView(clickedSlot.facilityCoordinates);
       setRadiusOverride(1); // Trigger AI search within 1km of this facility
-      
-      // Scroll to top of results or map for better UX
+      setSearchAttempted(true);
       window.scrollTo({ top: mainSearchInputRef.current?.offsetTop || 0, behavior: 'smooth' });
     }
   }, [rawAiSpaces]);
 
   const handleMapIdle = useCallback((center: { lat: number; lng: number }) => {
-    setActiveSearchCenter(center);
-    setMapCenterForView(center); 
-    setRadiusOverride(null); 
-    setSearchAttempted(true);
-  }, []);
+    // Only update if the center has meaningfully changed to avoid excessive re-searches
+    if (!activeSearchCenter || Math.abs(activeSearchCenter.lat - center.lat) > 0.001 || Math.abs(activeSearchCenter.lng - center.lng) > 0.001) {
+        setActiveSearchCenter(center);
+        setMapCenterForView(center); 
+        setRadiusOverride(null); // Use filter radius for map idle
+        setSearchAttempted(true);
+    }
+  }, [activeSearchCenter]);
 
   const handlePlaceSelectedOnMapOrInput = useCallback((place: google.maps.places.PlaceResult) => {
     if (place.geometry?.location) {
       const newCenter = { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() };
-      const newSearchQuery = place.name || place.formatted_address || `${newCenter.lat},${newCenter.lng}`;
+      const newSearchQuery = place.name || place.formatted_address || `${newCenter.lat.toFixed(4)},${newCenter.lng.toFixed(4)}`;
 
       setSearchQuery(newSearchQuery);
       setMapCenterForView(newCenter);
@@ -215,7 +208,7 @@ function SearchPageComponent() {
         <div className="text-center py-10 text-muted-foreground bg-card rounded-lg shadow p-6">
           <Info className="mx-auto h-12 w-12 mb-4 text-primary" />
           <p className="text-lg font-medium text-foreground">Find Parking Slots</p>
-          <p className="text-sm">Enter a location, apply filters, or pan the map. AI-generated parking slots will appear here.</p>
+          <p className="text-sm">Enter a location or interact with the map. AI-generated parking slots will appear here.</p>
         </div>
       );
     }
@@ -242,7 +235,7 @@ function SearchPageComponent() {
               type="text"
               placeholder="Enter address, landmark, or area..."
               value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setSearchAttempted(false); }}
+              onChange={(e) => { setSearchQuery(e.target.value); setSearchAttempted(false); /* Don't search on every keystroke */ }}
               className="pl-10 pr-4 py-3 h-12 text-base w-full"
             />
           </div>
@@ -251,6 +244,22 @@ function SearchPageComponent() {
           </Button>
         </form>
 
+        {/* Map now appears directly below the search form */}
+        <div className="mb-8 h-[400px] md:h-[500px] rounded-lg overflow-hidden shadow-xl">
+            <MapComponent
+                markers={displayedSpaces.map(s => ({ id: s.id, lat: s.facilityCoordinates.lat, lng: s.facilityCoordinates.lng, label: s.facilityName }))}
+                center={mapCenterForView}
+                onMarkerClick={handleMarkerClick}
+                interactive={true}
+                showSearchInput={true} 
+                autocompleteInputRef={mainSearchInputRef}
+                showMyLocationButton={true}
+                onPlaceSelected={handlePlaceSelectedOnMapOrInput}
+                onMapIdle={handleMapIdle}
+            />
+        </div>
+
+        {/* Two-column layout for Filters and Results */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-4 xl:col-span-3">
              <div className="sticky top-20"> {/* Ensure header height is accounted for if header is sticky */}
@@ -259,31 +268,16 @@ function SearchPageComponent() {
           </div>
 
           <div className="lg:col-span-8 xl:col-span-9">
-            <div className="mb-6 h-[400px] md:h-[500px] rounded-lg overflow-hidden shadow-xl">
-                 <MapComponent
-                    markers={displayedSpaces.map(s => ({ id: s.id, lat: s.facilityCoordinates.lat, lng: s.facilityCoordinates.lng, label: s.facilityName }))}
-                    center={mapCenterForView}
-                    onMarkerClick={handleMarkerClick}
-                    interactive={true}
-                    showSearchInput={true} // Map's own search input
-                    autocompleteInputRef={mainSearchInputRef} // Connects main search to map
-                    showMyLocationButton={true}
-                    onPlaceSelected={handlePlaceSelectedOnMapOrInput}
-                    onMapIdle={handleMapIdle}
-                />
-            </div>
-            
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-semibold">
                 {isLoading ? 'AI is Searching for Slots...' : `${displayedSpaces.length} Parking Slots Found`}
               </h2>
-              {/* View mode toggle removed as grid is the primary view now for slots */}
             </div>
 
             {isLoading ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
-                {[...Array(10)].map((_, i) => ( // Skeleton for smaller slot cards
-                  <Card key={i} className="w-full aspect-[3/4]"> {/* Adjust aspect ratio as needed */}
+                {[...Array(10)].map((_, i) => ( 
+                  <Card key={i} className="w-full aspect-[3/4]"> 
                     <CardContent className="p-2 sm:p-3 flex flex-col justify-center items-center h-full">
                       <Skeleton className="h-5 w-1/2 mb-1" />
                       <Skeleton className="h-4 w-3/4 mb-2" />
@@ -317,5 +311,4 @@ export default function SearchPage() {
     </Suspense>
   );
 }
-
     
