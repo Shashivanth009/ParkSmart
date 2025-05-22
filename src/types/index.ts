@@ -1,11 +1,11 @@
+
 export interface ParkingSpace {
   id: string;
   name: string;
   address: string;
   availability: 'high' | 'medium' | 'low' | 'full';
-  distance?: string; // e.g., "0.5 km"
   pricePerHour: number;
-  features: Array<'covered' | 'ev-charging' | 'cctv' | 'disabled-access'>;
+  features: Array<'covered' | 'ev-charging' | 'cctv' | 'disabled-access' | 'well-lit' | 'secure'>; // Added new features
   coordinates: { lat: number; lng: number };
   imageUrl?: string;
   rating?: number; // e.g., 4.5
@@ -72,3 +72,4 @@ export const featureLabels: Record<ParkingFeature, string> = {
   'well-lit': 'Well Lit',
   secure: 'Secure Parking',
 };
+

@@ -1,10 +1,11 @@
+
 import Link from 'next/link';
 import Image from 'next/image';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { ParkingSpace, ParkingFeature } from '@/types';
-import { MapPin, Zap, ShieldCheck, Car, Star, Users, Sun } from 'lucide-react'; // Added Users for capacity
+import { MapPin, Users, Star } from 'lucide-react'; // Removed unused icons, added Users
 import { featureIcons, featureLabels } from '@/types';
 
 
@@ -13,7 +14,7 @@ interface ParkingCardProps {
 }
 
 const FeatureIconDisplay = ({ feature }: { feature: ParkingFeature }) => {
-  const IconComponent = featureIcons[feature] || Car; // Default to Car icon if not found
+  const IconComponent = featureIcons[feature] || require('lucide-react').Car; // Default to Car icon if not found
   const label = featureLabels[feature] || feature;
   return (
     <div className="flex items-center gap-1 text-xs text-muted-foreground" title={label}>
@@ -74,9 +75,11 @@ export function ParkingCard({ space }: ParkingCardProps) {
             </div>
         }
 
+        {/* Removed static distance display
         {space.distance && (
           <p className="text-sm text-muted-foreground">Distance: {space.distance}</p>
         )}
+        */}
 
         <div className="flex flex-wrap gap-x-3 gap-y-1.5 pt-1">
           {space.features.slice(0, 3).map(feature => ( // Show max 3 features initially
@@ -97,3 +100,4 @@ export function ParkingCard({ space }: ParkingCardProps) {
     </Card>
   );
 }
+

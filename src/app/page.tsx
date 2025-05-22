@@ -20,6 +20,7 @@ const mockFeaturedSpaces: ParkingSpace[] = [
   { id: 'ps3', name: 'Gachibowli Stadium Lot', address: 'Old Mumbai Hwy, Hyderabad', availability: 'low', pricePerHour: 1.8, features: ['covered', 'secure', 'well-lit'], coordinates: { lat: 17.4417, lng: 78.3498 }, rating: 4.0, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 5, totalSpots: 150 },
 ];
 
+const HOMEPAGE_MAP_CENTER = { lat: 17.3850, lng: 78.4867 }; // Hyderabad
 
 export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState(''); 
@@ -79,10 +80,11 @@ export default function HomePage() {
             </h2>
             <MapComponent 
               markers={mockFeaturedSpaces.map(s => ({ id: s.id, lat: s.coordinates.lat, lng: s.coordinates.lng, label: s.name }))}
-              center={{ lat: 17.3850, lng: 78.4867 }} 
-              interactive={true} // Allow interaction on homepage map as well
-              showMyLocationButton={true} // Add My Location button
+              center={HOMEPAGE_MAP_CENTER} 
+              interactive={true} 
+              showMyLocationButton={true} 
               className="rounded-xl shadow-2xl"
+              onMarkerClick={(id) => router.push(`/booking/${id}`)} // Navigate to booking page on marker click
             />
             <div className="text-center mt-8">
               <Button size="lg" asChild>
@@ -180,3 +182,4 @@ export default function HomePage() {
     </div>
   );
 }
+
