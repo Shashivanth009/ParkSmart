@@ -1,10 +1,11 @@
+
 "use client";
 import { useEffect, useState, Suspense } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { Header } from '@/components/core/Header';
 import { Footer } from '@/components/core/Footer';
 import { PageTitle } from '@/components/core/PageTitle';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CheckCircle2, MapPin, CalendarDays, Clock, Car, CircleDollarSign, Navigation, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -111,6 +112,11 @@ function ConfirmationPageComponent() {
                 <p className="flex items-center text-lg font-semibold"><CircleDollarSign className="w-5 h-5 mr-3 text-primary icon-glow-primary" /> <strong>Total Cost:</strong> ${bookingDetails.totalCost.toFixed(2)}</p>
               </div>
               <p className="text-xs text-muted-foreground text-center pt-2">A confirmation email has been sent to your registered email address.</p>
+              {bookingDetails.vehiclePlate && (
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  Tip: If your parking facility supports License Plate Recognition (LPR), your vehicle may be automatically recognized for entry.
+                </p>
+              )}
             </CardContent>
             <CardFooter className="flex flex-col sm:flex-row gap-3 pt-5">
               <Button className="w-full sm:w-auto flex-grow" onClick={handleNavigate}>

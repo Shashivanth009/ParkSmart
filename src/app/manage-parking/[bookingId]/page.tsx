@@ -1,3 +1,4 @@
+
 "use client";
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -7,12 +8,23 @@ import { PageTitle } from '@/components/core/PageTitle';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import type { Booking, ParkingSpace } from '@/types';
-import { MapPin, CalendarDays, Clock, Car, CircleDollarSign, Navigation, Timer, Loader2, AlertTriangle } from 'lucide-react';
+import { MapPin, CalendarDays, Clock, Car, CircleDollarSign, Navigation, Timer, Loader2, AlertTriangle, QrCode } from 'lucide-react';
 import { format, differenceInMinutes, intervalToDuration } from 'date-fns';
 import { ExtendParkingForm } from '@/components/booking/ExtendParkingForm';
 import { Progress } from '@/components/ui/progress';
 import { toast } from '@/hooks/use-toast';
 import Link from 'next/link';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 // Mock Data - replace with API calls
 const fetchBookingAndSpaceDetails = async (bookingId: string): Promise<{ booking: Booking | null; space: ParkingSpace | null }> => {
@@ -183,7 +195,29 @@ export default function ManageParkingPage() {
                 )}
                 {booking.status === 'completed' && <p className="pt-4 text-green-500 font-semibold text-center">This parking session has ended.</p>}
                 {booking.status === 'cancelled' && <p className="pt-4 text-red-500 font-semibold text-center">This booking has been cancelled.</p>}
-
+                
+                {booking.status === 'upcoming' && (
+                  <Card className="mt-6 border-dashed bg-muted/30">
+                    <CardHeader>
+                      <CardTitle className="text-lg flex items-center">
+                        <QrCode className="w-5 h-5 mr-2 text-accent icon-glow" /> Your E-Ticket
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="text-center flex flex-col items-center">
+                      <div className="bg-white p-3 inline-block rounded-lg shadow-md mb-3" data-ai-hint="qr code">
+                        {/* Placeholder for QR Code Image using a simple SVG representation */}
+                        <svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="0.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-layout-grid text-foreground">
+                          <rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>
+                           {/* Simple inner pattern */}
+                          <rect width="3" height="3" x="5" y="5" rx="0.5"/><rect width="3" height="3" x="16" y="5" rx="0.5"/><rect width="3" height="3" x="16" y="16" rx="0.5"/><rect width="3" height="3" x="5" y="16" rx="0.5"/>
+                          <line x1="8" y1="12" x2="16" y2="12" /><line x1="12" y1="8" x2="12" y2="16" />
+                        </svg>
+                      </div>
+                      <p className="text-sm text-muted-foreground">Present this QR code at the entry barrier or scanner.</p>
+                      <p className="text-xs text-muted-foreground mt-1">Also available in your confirmation email.</p>
+                    </CardContent>
+                  </Card>
+                )}
               </CardContent>
               <CardFooter className="flex flex-col sm:flex-row gap-2">
                 <Button className="w-full sm:w-auto" onClick={() => alert("Mock navigation to " + space.address)}>
@@ -206,7 +240,7 @@ export default function ManageParkingPage() {
           
           <div className="lg:col-span-5">
             {canExtend && (
-              <Card className="shadow-xl">
+              <Card className="shadow-xl sticky top-24"> {/* Sticky form */}
                 <CardHeader>
                   <CardTitle className="text-xl flex items-center"><Timer className="mr-2 h-5 w-5 text-accent icon-glow" /> Extend Parking Time</CardTitle>
                   <CardDescription>Need more time? Extend your session easily.</CardDescription>
@@ -217,7 +251,7 @@ export default function ManageParkingPage() {
               </Card>
             )}
             {(booking.status === 'completed' || booking.status === 'cancelled') && (
-                <Card className="shadow-xl text-center">
+                <Card className="shadow-xl text-center sticky top-24">
                     <CardContent className="p-6">
                         <AlertTriangle className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
                         <h3 className="text-lg font-semibold mb-1">Session Ended or Cancelled</h3>
