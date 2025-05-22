@@ -31,14 +31,16 @@ const ParkingSpaceSchema = z.object({
   availableSpots: z.number().int().min(0).optional().describe("Number of currently available spots. Should be less than or equal to totalSpots."),
 });
 
-export const FindParkingInputSchema = z.object({
+// NOT EXPORTED: Zod schema objects
+const FindParkingInputSchema = z.object({
   locationName: z.string().describe('The name of the location or area to search for parking, e.g., "Downtown Hyderabad" or "Near Charminar".'),
   searchRadiusKm: z.number().positive().describe('The search radius in kilometers around the locationName.'),
   desiredFeatures: z.array(z.enum(['covered', 'ev-charging', 'cctv', 'disabled-access', 'well-lit', 'secure'])).optional().describe('A list of desired features for the parking spots.'),
 });
 export type FindParkingInput = z.infer<typeof FindParkingInputSchema>;
 
-export const FindParkingOutputSchema = z.object({
+// NOT EXPORTED: Zod schema objects
+const FindParkingOutputSchema = z.object({
   parkingSpaces: z.array(ParkingSpaceSchema).describe('A list of 3 to 5 generated fictional parking spots.'),
 });
 export type FindParkingOutput = z.infer<typeof FindParkingOutputSchema>;
@@ -98,6 +100,10 @@ const findParkingGenkitFlow = ai.defineFlow(
         } else if (processedSpace.availability === 'high' && processedSpace.totalSpots && (processedSpace.availableSpots === undefined || processedSpace.availableSpots < processedSpace.totalSpots / 2) ) {
             processedSpace.availableSpots = Math.floor(processedSpace.totalSpots * 0.75) || processedSpace.availableSpots; // Ensure high means many spots
         }
+        // Add dataAiHint if missing, as it's now required by ParkingSpace but optional in schema for AI flexibility
+        if (!processedSpace.dataAiHint) {
+            processedSpace.dataAiHint = "parking lot"; // Default hint
+        }
         return processedSpace as ParkingSpace; // Cast to ensure type compatibility after processing
     });
 
@@ -113,6 +119,6 @@ export async function findParkingSpots(input: FindParkingInput): Promise<Parking
 // Helper to add dataAiHint to ParkingSpace type as it was missing
 declare module '@/types' {
     interface ParkingSpace {
-        dataAiHint?: string;
+        dataAiHint?: string; // Make it optional in base type to match AI behavior if needed
     }
 }
