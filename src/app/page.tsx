@@ -1,4 +1,8 @@
 
+"use client"; // Added to enable useState and useRouter
+
+import { useState } from 'react'; // Added for search input state
+import { useRouter } from 'next/navigation'; // Added for navigation
 import { Header } from '@/components/core/Header';
 import { Footer } from '@/components/core/Footer';
 import MapComponent from '@/components/map/MapComponent';
@@ -19,6 +23,18 @@ const mockFeaturedSpaces: ParkingSpace[] = [
 
 
 export default function HomePage() {
+  const [searchQuery, setSearchQuery] = useState(''); // Added state for search query
+  const router = useRouter(); // Added router instance
+
+  const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      router.push(`/search?location=${encodeURIComponent(searchQuery.trim())}`);
+    } else {
+      router.push('/search'); // Navigate to search page even if query is empty
+    }
+  };
+
   return (
     <div className="flex flex-col min-h-screen">
       <Header />
@@ -35,7 +51,10 @@ export default function HomePage() {
             <p className="mt-4 md:mt-6 max-w-2xl mx-auto text-lg md:text-xl text-muted-foreground">
               Find, book, and pay for parking in just a few clicks. ParkSmart makes urban mobility easier.
             </p>
-            <form className="mt-8 md:mt-10 max-w-xl mx-auto flex flex-col sm:flex-row items-center gap-3 p-2 bg-card rounded-lg shadow-xl">
+            <form 
+              onSubmit={handleSearchSubmit} // Added onSubmit handler
+              className="mt-8 md:mt-10 max-w-xl mx-auto flex flex-col sm:flex-row items-center gap-3 p-2 bg-card rounded-lg shadow-xl"
+            >
               <div className="relative w-full">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground icon-glow" />
                 <Input
@@ -43,6 +62,8 @@ export default function HomePage() {
                   placeholder="Enter location, e.g., 'Hitech City, Hyderabad'"
                   className="pl-10 pr-4 py-3 h-12 text-base w-full"
                   aria-label="Search for parking"
+                  value={searchQuery} // Bound value to state
+                  onChange={(e) => setSearchQuery(e.target.value)} // Update state on change
                 />
               </div>
               <Button type="submit" size="lg" className="w-full sm:w-auto h-12 shrink-0">
@@ -160,4 +181,3 @@ export default function HomePage() {
     </div>
   );
 }
-
