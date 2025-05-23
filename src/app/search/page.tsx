@@ -17,6 +17,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { findParkingSpots, type FindParkingInput } from '@/ai/flows/find-parking-flow';
 
 const DEFAULT_MAP_CENTER_HYD = { lat: 17.3850, lng: 78.4867 }; // Hyderabad
+const DEFAULT_MAP_ZOOM = 12;
+const FOCUSED_MAP_ZOOM = 15;
 
 function SearchPageComponent() {
   const searchParams = useSearchParams();
@@ -31,6 +33,7 @@ function SearchPageComponent() {
   const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null);
 
   const [mapCenterForView, setMapCenterForView] = useState<{ lat: number; lng: number }>(DEFAULT_MAP_CENTER_HYD);
+  const [zoomForView, setZoomForView] = useState<number>(DEFAULT_MAP_ZOOM);
   const [activeSearchCenter, setActiveSearchCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [userSetFilters, setUserSetFilters] = useState<ParkingFilters | null>(null);
   const [searchAttempted, setSearchAttempted] = useState(false);
@@ -44,6 +47,7 @@ function SearchPageComponent() {
     const urlRadius = searchParams.get('radius');
 
     let initialCenter = DEFAULT_MAP_CENTER_HYD;
+    let initialZoom = DEFAULT_MAP_ZOOM;
     let initialActiveCenter: { lat: number; lng: number } | null = null;
     let initialRadiusOverride: number | null = null;
 
@@ -53,6 +57,7 @@ function SearchPageComponent() {
       if (!isNaN(lat) && !isNaN(lng)) {
         initialCenter = { lat, lng };
         initialActiveCenter = { lat, lng };
+        initialZoom = FOCUSED_MAP_ZOOM; // Zoom in if specific coords are provided
         if (urlRadius) {
           const radius = parseFloat(urlRadius);
           if (!isNaN(radius) && radius > 0) {
@@ -63,6 +68,7 @@ function SearchPageComponent() {
     }
     
     setMapCenterForView(initialCenter);
+    setZoomForView(initialZoom);
     if (initialActiveCenter) setActiveSearchCenter(initialActiveCenter);
     if (initialRadiusOverride) setRadiusOverride(initialRadiusOverride);
     setSearchQuery(urlLocation);
@@ -95,11 +101,11 @@ function SearchPageComponent() {
       setRawAiSpaces(results);
 
       if (results.length > 0 && !activeSearchCenter) {
-        // If AI found results and we didn't have an active search center (e.g. from text search only)
-        // Set map center to the first result's facility
         setMapCenterForView(results[0].facilityCoordinates);
+        setZoomForView(FOCUSED_MAP_ZOOM); // Zoom to first result if no active center
       } else if (activeSearchCenter) {
         setMapCenterForView(activeSearchCenter); 
+        // setZoomForView(FOCUSED_MAP_ZOOM); // Keep current zoom or focus? For now, keep if activeSearchCenter was set by map pan
       }
       
     } catch (error) {
@@ -126,7 +132,7 @@ function SearchPageComponent() {
         setRadiusOverride(null); 
       }
     } else if (userSetFilters && !locationToSearch && !activeSearchCenter && searchAttempted) {
-        setRawAiSpaces([]); // Clear results if search was attempted with no criteria
+        setRawAiSpaces([]); 
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, activeSearchCenter, userSetFilters, radiusOverride, searchAttempted, performAiSearch]);
@@ -154,7 +160,8 @@ function SearchPageComponent() {
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     router.push(`/search?location=${encodeURIComponent(searchQuery)}`, { scroll: false });
-    setActiveSearchCenter(null); // Let text search take precedence, or map interaction will refine
+    setActiveSearchCenter(null); 
+    setZoomForView(DEFAULT_MAP_ZOOM); // Reset to default zoom on new text search
     setRadiusOverride(null); 
     setSearchAttempted(true);
   };
@@ -162,7 +169,7 @@ function SearchPageComponent() {
   const handleApplyFilters = useCallback((filters: ParkingFilters) => {
     setUserSetFilters(filters);
     setRadiusOverride(null); 
-    setSearchAttempted(true); // Trigger search if filters applied
+    setSearchAttempted(true); 
   }, []);
 
   const handleMarkerClick = useCallback((markerId: string) => {
@@ -172,21 +179,22 @@ function SearchPageComponent() {
       setSearchQuery(clickedSlot.facilityName);
       setActiveSearchCenter(clickedSlot.facilityCoordinates);
       setMapCenterForView(clickedSlot.facilityCoordinates);
-      setRadiusOverride(1); // Trigger AI search within 1km of this facility
+      setZoomForView(FOCUSED_MAP_ZOOM + 1); // Zoom in a bit more on marker click
+      setRadiusOverride(1); 
       setSearchAttempted(true);
       window.scrollTo({ top: mainSearchInputRef.current?.offsetTop || 0, behavior: 'smooth' });
     }
   }, [rawAiSpaces]);
 
-  const handleMapIdle = useCallback((center: { lat: number; lng: number }) => {
-    // Only update if the center has meaningfully changed to avoid excessive re-searches
-    if (!activeSearchCenter || Math.abs(activeSearchCenter.lat - center.lat) > 0.001 || Math.abs(activeSearchCenter.lng - center.lng) > 0.001) {
+  const handleMapIdle = useCallback((center: { lat: number; lng: number }, newZoom: number) => {
+    if (!activeSearchCenter || Math.abs(activeSearchCenter.lat - center.lat) > 0.001 || Math.abs(activeSearchCenter.lng - center.lng) > 0.001 || zoomForView !== newZoom ) {
         setActiveSearchCenter(center);
         setMapCenterForView(center); 
-        setRadiusOverride(null); // Use filter radius for map idle
+        setZoomForView(newZoom);
+        setRadiusOverride(null); 
         setSearchAttempted(true);
     }
-  }, [activeSearchCenter]);
+  }, [activeSearchCenter, zoomForView]);
 
   const handlePlaceSelectedOnMapOrInput = useCallback((place: google.maps.places.PlaceResult) => {
     if (place.geometry?.location) {
@@ -195,6 +203,7 @@ function SearchPageComponent() {
 
       setSearchQuery(newSearchQuery);
       setMapCenterForView(newCenter);
+      setZoomForView(FOCUSED_MAP_ZOOM); // Focus zoom on place selection
       setActiveSearchCenter(newCenter);
       setRadiusOverride(null); 
       setSearchAttempted(true);
@@ -235,7 +244,7 @@ function SearchPageComponent() {
               type="text"
               placeholder="Enter address, landmark, or area..."
               value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setSearchAttempted(false); /* Don't search on every keystroke */ }}
+              onChange={(e) => { setSearchQuery(e.target.value); setSearchAttempted(false); }}
               className="pl-10 pr-4 py-3 h-12 text-base w-full"
             />
           </div>
@@ -243,12 +252,12 @@ function SearchPageComponent() {
             <SearchIcon className="mr-2 h-5 w-5" /> Search
           </Button>
         </form>
-
-        {/* Map now appears directly below the search form */}
+        
         <div className="mb-8 h-[400px] md:h-[500px] rounded-lg overflow-hidden shadow-xl">
             <MapComponent
                 markers={displayedSpaces.map(s => ({ id: s.id, lat: s.facilityCoordinates.lat, lng: s.facilityCoordinates.lng, label: s.facilityName }))}
                 center={mapCenterForView}
+                zoom={zoomForView}
                 onMarkerClick={handleMarkerClick}
                 interactive={true}
                 showSearchInput={false} 
@@ -259,10 +268,9 @@ function SearchPageComponent() {
             />
         </div>
 
-        {/* Two-column layout for Filters and Results */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-4 xl:col-span-3">
-             <div className="sticky top-20"> {/* Ensure header height is accounted for if header is sticky */}
+             <div className="sticky top-20">
                 <ParkingPreferenceFilter onApplyFilters={handleApplyFilters} />
              </div>
           </div>
