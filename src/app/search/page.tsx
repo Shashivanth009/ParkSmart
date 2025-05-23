@@ -11,7 +11,7 @@ import { Header } from '@/components/core/Header';
 import { Footer } from '@/components/core/Footer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardHeader, CardContent, CardFooter } from '@/components/ui/card'; // Added Card imports
+import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Search as SearchIcon, ListFilter, Map, Loader2, AlertTriangle, Info } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { findParkingSpots, type FindParkingInput } from '@/ai/flows/find-parking-flow';
@@ -32,7 +32,6 @@ function SearchPageComponent() {
   const [displayedSpaces, setDisplayedSpaces] = useState<ParkingSpace[]>([]);
 
   const [isLoading, setIsLoading] = useState(false);
-  // const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null); // Keep if direct selection features are added
 
   const [mapCenterForView, setMapCenterForView] = useState<{ lat: number; lng: number }>(DEFAULT_MAP_CENTER_HYD);
   const [zoomForView, setZoomForView] = useState<number>(DEFAULT_MAP_ZOOM);
@@ -58,7 +57,7 @@ function SearchPageComponent() {
       const lng = parseFloat(urlLng);
       if (!isNaN(lat) && !isNaN(lng)) {
         initialCenter = { lat, lng };
-        initialActiveCenter = { lat, lng }; // Set active center if lat/lng are in URL
+        initialActiveCenter = { lat, lng }; 
         initialZoom = FOCUSED_MAP_ZOOM; 
         if (urlRadius) {
           const radius = parseFloat(urlRadius);
@@ -75,18 +74,17 @@ function SearchPageComponent() {
     if (initialRadiusOverride) setRadiusOverride(initialRadiusOverride);
     setSearchQuery(urlLocation);
 
-    // If location or active center from URL, consider search as "attempted" for initial AI call
     if (urlLocation || initialActiveCenter) {
       setSearchAttempted(true); 
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run on mount to parse URL params
+  }, []); 
 
   const performAiSearch = useCallback(async (
     locationQuery: string,
     radius: number,
     features: ParkingFeature[],
-    contextualSearchCenter: { lat: number; lng: number } | null // Center that triggered this specific AI search
+    contextualSearchCenter: { lat: number; lng: number } | null 
   ) => {
     if (!locationQuery.trim() && !contextualSearchCenter) { 
       setRawAiSpaces([]);
@@ -111,37 +109,27 @@ function SearchPageComponent() {
       if (results.length > 0) {
         const isFreshTextSearch = locationQuery.trim() && !contextualSearchCenter;
         if (isFreshTextSearch) {
-          // This was a new text search, center map on first AI result and set it as active search center.
           setMapCenterForView(results[0].facilityCoordinates);
-          setActiveSearchCenter(results[0].facilityCoordinates); // Update the active center based on AI's result
+          setActiveSearchCenter(results[0].facilityCoordinates); 
           setZoomForView(FOCUSED_MAP_ZOOM);
-        }
-        // If contextualSearchCenter was provided (map idle/click/autocomplete), map is already centered appropriately.
-        // If no locationQuery and no contextualSearchCenter (e.g. filter change on initial load), also center on first result.
-        else if (!locationQuery.trim() && !contextualSearchCenter) {
-            setMapCenterForView(results[0].facilityCoordinates);
-            setActiveSearchCenter(results[0].facilityCoordinates);
-            setZoomForView(FOCUSED_MAP_ZOOM);
         }
       }
       
     } catch (error) {
       console.error("Error fetching parking slots from AI:", error);
-      setRawAiSpaces([]);
+      setRawAiSpaces([]); // Clear spaces on error
     } finally {
       setIsLoading(false);
     }
-  }, [setRawAiSpaces, setIsLoading, setSearchAttempted, setMapCenterForView, setActiveSearchCenter, setZoomForView]);
+  }, []);
 
 
   useEffect(() => {
     const locationToSearch = searchQuery.trim();
-    // Trigger AI search if filters are set AND (there's a text query OR an active map center OR a search was previously attempted which implies context)
     if (userSetFilters && (locationToSearch || activeSearchCenter || (searchAttempted && !locationToSearch && !activeSearchCenter))) {
       const searchRadius = radiusOverride ?? userSetFilters.distanceMax;
       const desiredFeaturesForAI = userSetFilters.features;
       
-      // Pass the current activeSearchCenter as the context for this AI call
       performAiSearch(
         locationToSearch,
         searchRadius,
@@ -155,16 +143,16 @@ function SearchPageComponent() {
         setRawAiSpaces([]); 
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, activeSearchCenter, userSetFilters, radiusOverride, searchAttempted, performAiSearch]);
+  }, [searchQuery, activeSearchCenter, userSetFilters, radiusOverride, searchAttempted]);
 
 
   useEffect(() => {
     let filtered = [...rawAiSpaces];
     
-    // Distance filter based on activeSearchCenter (if set and not overridden by a specific marker click radius)
-    if (activeSearchCenter && !radiusOverride) { 
-      const filterRadius = userSetFilters?.distanceMax || 1; 
+    if (activeSearchCenter && userSetFilters && !radiusOverride) { 
+      const filterRadius = userSetFilters.distanceMax; 
       filtered = filtered.filter(slot => {
+        if (!slot.facilityCoordinates) return false;
         const distance = getDistanceFromLatLonInKm(
           activeSearchCenter.lat,
           activeSearchCenter.lng,
@@ -175,7 +163,6 @@ function SearchPageComponent() {
       });
     }
 
-    // Other client-side filters (price, rating, type)
     if (userSetFilters) {
       filtered = filtered.filter(slot =>
         (slot.pricePerHour === undefined || (slot.pricePerHour >= userSetFilters.priceRange[0] && slot.pricePerHour <= userSetFilters.priceRange[1])) &&
@@ -185,10 +172,19 @@ function SearchPageComponent() {
       const hasEvFeature = userSetFilters.features.includes('ev-charging');
       const hasAccessibleFeature = userSetFilters.features.includes('disabled-access');
 
-      if (hasEvFeature && !hasAccessibleFeature) {
-        filtered = filtered.filter(slot => slot.slotType === 'ev-charging' || slot.slotType === 'standard');
-      } else if (hasAccessibleFeature && !hasEvFeature) {
-         filtered = filtered.filter(slot => slot.slotType === 'accessible' || slot.slotType === 'standard');
+      if (hasEvFeature || hasAccessibleFeature) {
+         filtered = filtered.filter(slot => {
+            let matches = true;
+            if (hasEvFeature && slot.slotType !== 'ev-charging') matches = false;
+            if (hasAccessibleFeature && slot.slotType !== 'accessible') matches = false;
+            // If neither specific type is requested, standard slots are okay
+            // If both are requested, slot must be one or the other (current AI doesn't combine, maybe standard if that's the fallback)
+            // This logic might need AI to generate slots that are BOTH if such a filter is applied.
+            // For now, if EV is checked, only EV slots (or standard if that's the implicit fallback). If Accessible, only Accessible.
+            // If "standard" slots should also pass if specific types are checked, this logic might need to be broader.
+            // The current AI prompt is asked to include slots of desired type if requested.
+            return matches || slot.slotType === 'standard'; // Allow standard if it doesn't conflict with a specific request.
+         });
       }
     }
     setDisplayedSpaces(filtered);
@@ -197,18 +193,38 @@ function SearchPageComponent() {
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // For a direct text submission, reset activeSearchCenter.
-    // The performAiSearch (triggered by useEffect on searchQuery change)
-    // will then use the AI results to set a new activeSearchCenter and map view.
-    setActiveSearchCenter(null); 
-    setMapCenterForView(DEFAULT_MAP_CENTER_HYD); // Reset map visually, AI results will re-center
-    setZoomForView(DEFAULT_MAP_ZOOM);
-
-    router.push(`/search?location=${encodeURIComponent(searchQuery)}`, { scroll: false });
-    // searchQuery state is already managed by the input's onChange.
-    // The useEffect watching searchQuery will trigger performAiSearch.
-    setRadiusOverride(null); 
     setSearchAttempted(true);
+    setRadiusOverride(null);
+
+    if (!searchQuery.trim() && !activeSearchCenter) {
+      setRawAiSpaces([]);
+      return;
+    }
+
+    // If activeSearchCenter is set, it means a place was likely selected via autocomplete.
+    // The searchQuery is the name of that place. We want to search based on this.
+    // If activeSearchCenter is NOT set, it's a pure text search. AI will try to find it.
+    
+    const urlParams = new URLSearchParams();
+    if (searchQuery.trim()) {
+        urlParams.set('location', searchQuery.trim());
+    }
+    if (activeSearchCenter) { // If center is known (e.g. from autocomplete)
+        urlParams.set('lat', activeSearchCenter.lat.toString());
+        urlParams.set('lng', activeSearchCenter.lng.toString());
+    }
+    router.push(`/search?${urlParams.toString()}`, { scroll: false });
+
+    // Trigger AI search, performAiSearch useEffect will pick up changes to searchQuery or activeSearchCenter.
+    // If they haven't changed but user clicked search again, explicitly call:
+     if (userSetFilters) {
+        performAiSearch(
+            searchQuery.trim(),
+            radiusOverride ?? userSetFilters.distanceMax,
+            userSetFilters.features,
+            activeSearchCenter // Pass current activeSearchCenter
+        );
+    }
   };
 
   const handleApplyFilters = useCallback((filters: ParkingFilters) => {
@@ -219,50 +235,55 @@ function SearchPageComponent() {
 
   const handleMarkerClick = useCallback((markerId: string) => {
     const clickedSlot = rawAiSpaces.find(s => s.id === markerId);
-    if (clickedSlot) {
-      // setSelectedSpaceId(markerId); // Keep if needed for other features
-      setSearchQuery(clickedSlot.facilityName); 
+    if (clickedSlot && clickedSlot.facilityCoordinates) {
+      setSearchQuery(clickedSlot.facilityName || clickedSlot.facilityAddress || clickedSlot.slotLabel); 
       setActiveSearchCenter(clickedSlot.facilityCoordinates);
       setMapCenterForView(clickedSlot.facilityCoordinates);
-      setZoomForView(FOCUSED_MAP_ZOOM + 1); 
+      setZoomForView(FOCUSED_MAP_ZOOM + 2); // Zoom in a bit more on specific facility
       setRadiusOverride(1); // Trigger AI search for 1km radius around this specific facility pin
       setSearchAttempted(true);
-      window.scrollTo({ top: mainSearchInputRef.current?.offsetTop || 0, behavior: 'smooth' });
+      if (mainSearchInputRef.current) {
+        mainSearchInputRef.current.focus();
+         window.scrollTo({ top: mainSearchInputRef.current.offsetTop - 20, behavior: 'smooth' });
+      }
     }
   }, [rawAiSpaces]);
 
   const handleMapIdle = useCallback((center: { lat: number; lng: number }, newZoom: number) => {
-    // Only trigger new search if map moved significantly or zoom changed
     if (!activeSearchCenter || 
-        Math.abs(activeSearchCenter.lat - center.lat) > 0.001 || 
-        Math.abs(activeSearchCenter.lng - center.lng) > 0.001 || 
+        Math.abs(activeSearchCenter.lat - center.lat) > 0.005 || // Increased threshold for map idle trigger
+        Math.abs(activeSearchCenter.lng - center.lng) > 0.005 || 
         zoomForView !== newZoom ) {
         
-        setActiveSearchCenter(center); // This will trigger performAiSearch via useEffect
+        setActiveSearchCenter(center); 
         setMapCenterForView(center); 
         setZoomForView(newZoom);
-        setRadiusOverride(null); // New map view, use filter radius
+        setRadiusOverride(null); 
         setSearchAttempted(true);
-        setSearchQuery(''); // Clear text search when map is moved, focus on map area
+        // setSearchQuery(''); // Clearing query on map move makes it map-centric
     }
-  }, [activeSearchCenter, zoomForView, setActiveSearchCenter, setMapCenterForView, setZoomForView, setSearchQuery]);
+  }, [activeSearchCenter, zoomForView]);
 
   const handlePlaceSelectedOnMapOrInput = useCallback((place: google.maps.places.PlaceResult) => {
     if (place.geometry?.location) {
       const newCenter = { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() };
       const newSearchQuery = place.name || place.formatted_address || `${newCenter.lat.toFixed(4)},${newCenter.lng.toFixed(4)}`;
 
-      setSearchQuery(newSearchQuery); // This will trigger performAiSearch via useEffect
-      setActiveSearchCenter(newCenter); // Set active center immediately for performAiSearch context
-      setMapCenterForView(newCenter); // Update map view
+      setSearchQuery(newSearchQuery); 
+      setActiveSearchCenter(newCenter); 
+      setMapCenterForView(newCenter); 
       setZoomForView(FOCUSED_MAP_ZOOM); 
       
       setRadiusOverride(null); 
       setSearchAttempted(true);
-      // Update URL to reflect the selected place
-      router.push(`/search?location=${encodeURIComponent(newSearchQuery)}&lat=${newCenter.lat}&lng=${newCenter.lng}`, { scroll: false });
+      
+      const urlParams = new URLSearchParams();
+      urlParams.set('location', newSearchQuery);
+      urlParams.set('lat', newCenter.lat.toString());
+      urlParams.set('lng', newCenter.lng.toString());
+      router.push(`/search?${urlParams.toString()}`, { scroll: false });
     }
-  }, [router, setActiveSearchCenter, setMapCenterForView, setZoomForView, setSearchQuery]);
+  }, [router]);
 
   const noResultsMessage = () => {
     if (!searchQuery.trim() && !activeSearchCenter && !searchAttempted && !userSetFilters) {
@@ -297,7 +318,7 @@ function SearchPageComponent() {
               type="text"
               placeholder="Enter address, landmark, or area..."
               value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); }} 
+              onChange={(e) => setSearchQuery(e.target.value)} 
               className="pl-10 pr-4 py-3 h-12 text-base w-full"
             />
           </div>
@@ -308,13 +329,18 @@ function SearchPageComponent() {
         
         <div className="mb-8 h-[400px] md:h-[500px] rounded-lg overflow-hidden shadow-xl">
             <MapComponent
-                markers={displayedSpaces.map(s => ({ id: s.id, lat: s.facilityCoordinates.lat, lng: s.facilityCoordinates.lng, label: s.slotLabel + ' @ ' + s.facilityName }))}
+                markers={displayedSpaces.map(s => ({ 
+                    id: s.id, 
+                    lat: s.facilityCoordinates.lat, 
+                    lng: s.facilityCoordinates.lng, 
+                    label: `${s.slotLabel} @ ${s.facilityName}` 
+                }))}
                 center={mapCenterForView}
                 zoom={zoomForView}
                 onMarkerClick={handleMarkerClick}
                 interactive={true}
-                showSearchInput={false} // Search input inside map removed
-                autocompleteInputRef={mainSearchInputRef} // Main search bar used for autocomplete
+                showSearchInput={true} // Enable map's internal search
+                autocompleteInputRef={mainSearchInputRef} 
                 showMyLocationButton={true}
                 onPlaceSelected={handlePlaceSelectedOnMapOrInput}
                 onMapIdle={handleMapIdle}
@@ -323,7 +349,7 @@ function SearchPageComponent() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-4 xl:col-span-3">
-             <div className="sticky top-20"> {/* Adjust top if header height changes */}
+             <div className="sticky top-20">
                 <ParkingPreferenceFilter onApplyFilters={handleApplyFilters} />
              </div>
           </div>
@@ -333,7 +359,6 @@ function SearchPageComponent() {
               <h2 className="text-xl font-semibold">
                 {isLoading ? 'AI is Searching for Slots...' : `${displayedSpaces.length} Parking Slots Found`}
               </h2>
-              {/* View mode toggle can be added here if desired */}
             </div>
 
             {isLoading ? (
@@ -373,6 +398,3 @@ export default function SearchPage() {
     </Suspense>
   );
 }
-    
-
-    
