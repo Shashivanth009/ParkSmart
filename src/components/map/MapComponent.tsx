@@ -30,7 +30,7 @@ interface MapComponentProps {
   zoom?: number;
   center?: { lat: number; lng: number } | null;
   showSearchInput?: boolean;
-  autocompleteInputRef?: React.RefObject<HTMLInputElement>; 
+  // autocompleteInputRef prop removed as external input is gone from search page
   showMyLocationButton?: boolean;
   onPlaceSelected?: (place: google.maps.places.PlaceResult) => void;
   onMapIdle?: (center: { lat: number; lng: number }, zoom: number) => void;
@@ -48,7 +48,6 @@ const MapComponent: React.FC<MapComponentProps> = ({
   zoom = DEFAULT_MAP_ZOOM,
   center = { lat: 17.3850, lng: 78.4867 }, 
   showSearchInput = false,
-  autocompleteInputRef,
   showMyLocationButton = false,
   onPlaceSelected,
   onMapIdle,
@@ -60,7 +59,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
   
   const internalSearchInputRef = useRef<HTMLInputElement>(null);
   const internalAutocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
-  const externalAutocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  // externalAutocompleteRef removed
 
 
   const [scriptsLoaded, setScriptsLoaded] = useState(false);
@@ -120,7 +119,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
     if (!GOMAPS_PRO_API_KEY) {
       console.error("MapComponent: GoMaps Pro API key (NEXT_PUBLIC_GOMAPS_PRO_API_KEY) is not configured.");
       setApiKeyMissingOrScriptsFailed(true);
-      setIsMapLoading(false); 
+      if (isMapLoading) setIsMapLoading(false); 
       return;
     }
     setApiKeyMissingOrScriptsFailed(false); 
@@ -128,7 +127,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
     window.gm_authFailure = () => {
       console.error("MapComponent: Detected gm_authFailure. This often indicates an API key issue (billing, quota, invalid key, or API not enabled). For Google Maps, check Google Cloud Console. For GoMaps Pro, check their dashboard or if it proxies Google errors.");
       setApiKeyMissingOrScriptsFailed(true);
-      setIsMapLoading(false);
+      if (isMapLoading) setIsMapLoading(false);
     };
 
     loadGoMapsProScript(GOMAPS_PRO_API_KEY)
@@ -139,7 +138,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
       .catch((error) => {
         console.error("MapComponent: Critical failure loading GoMaps Pro resources.", error);
         setApiKeyMissingOrScriptsFailed(true);
-        setIsMapLoading(false);
+        if (isMapLoading) setIsMapLoading(false);
         setScriptsLoaded(false); 
       });
     
@@ -150,6 +149,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
             delete (window as any).initMapComponentGlobalCallbackSet;
         }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadGoMapsProScript]);
 
 
@@ -177,23 +177,22 @@ const MapComponent: React.FC<MapComponentProps> = ({
           mapInstanceRef.current.setZoom(zoom);
           zoomChanged = true;
       }
-      // If only props changed but map already exists, ensure loader is off.
       if (isMapLoading && !centerChanged && !zoomChanged) setIsMapLoading(false); 
       return;
     }
     
     if (mapAlreadyInitialized) return; 
 
-    setIsMapLoading(true); 
+    if (!isMapLoading) setIsMapLoading(true); 
     setMapLoadTimedOut(false);
 
     const loadTimeoutTimer = setTimeout(() => {
       if (isMapLoading && (!mapInstanceRef.current || !mapInstanceRef.current.getCenter()) ) {
         console.error("MapComponent: Map did not fully initialize within timeout period (20s).");
-        setIsMapLoading(false); 
+        if (isMapLoading) setIsMapLoading(false); 
         setMapLoadTimedOut(true);
       } else if (isMapLoading && mapInstanceRef.current?.getCenter()) {
-        setIsMapLoading(false);
+        if (isMapLoading) setIsMapLoading(false);
         setMapLoadTimedOut(false);
       }
     }, 20000);
@@ -257,8 +256,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
         internalAutocompleteRef.current.addListener('place_changed', () => {
           const place = internalAutocompleteRef.current?.getPlace();
           if (place?.geometry?.location) {
-            map.setCenter(place.geometry.location);
-            map.setZoom(FOCUSED_MAP_ZOOM); 
+            // Map centering/zooming is handled by the parent via onPlaceSelected and subsequent state updates.
             if (onPlaceSelected) {
               onPlaceSelected(place);
             }
@@ -266,21 +264,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
         });
       }
       
-      if (autocompleteInputRef?.current && window.google.maps.places) {
-        externalAutocompleteRef.current = new window.google.maps.places.Autocomplete(autocompleteInputRef.current, {
-            types: ['geocode'],
-        });
-        externalAutocompleteRef.current.bindTo('bounds', map);
-        externalAutocompleteRef.current.addListener('place_changed', () => {
-            const place = externalAutocompleteRef.current?.getPlace();
-            if (place?.geometry?.location) {
-                if (onPlaceSelected) {
-                    onPlaceSelected(place); 
-                }
-            }
-        });
-      }
-
+      // Logic for externalAutocompleteRef removed as the prop is removed.
 
       return () => {
         cleanupListeners();
@@ -291,9 +275,6 @@ const MapComponent: React.FC<MapComponentProps> = ({
         if (internalAutocompleteRef.current && window.google?.maps?.event) {
             google.maps.event.clearInstanceListeners(internalAutocompleteRef.current);
         }
-        if (externalAutocompleteRef.current && window.google?.maps?.event) {
-            google.maps.event.clearInstanceListeners(externalAutocompleteRef.current);
-        }
       };
 
     } catch (error) {
@@ -303,7 +284,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
       setMapLoadTimedOut(true); 
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scriptsLoaded, apiKeyMissingOrScriptsFailed, interactive, showSearchInput, autocompleteInputRef, onPlaceSelected, onMapIdle]);
+  }, [scriptsLoaded, apiKeyMissingOrScriptsFailed, interactive, showSearchInput, onPlaceSelected, onMapIdle]);
 
 
   useEffect(() => {
@@ -380,10 +361,10 @@ const MapComponent: React.FC<MapComponentProps> = ({
           };
           const currentMap = mapInstanceRef.current;
           if (currentMap) {
+             // The 'idle' event will fire after setCenter/setZoom, 
+             // and call onMapIdle if provided, updating parent state.
             currentMap.setCenter(userLocation);
             currentMap.setZoom(FOCUSED_MAP_ZOOM); 
-            // The 'idle' event will fire and call onMapIdle,
-            // which will update the parent component's state for center and zoom.
           }
         },
         (error) => {
@@ -411,12 +392,12 @@ const MapComponent: React.FC<MapComponentProps> = ({
             <p className="font-semibold mb-1">Troubleshooting Steps:</p>
             <ol className="list-decimal list-inside space-y-1">
               <li><strong>Environment Variable File:</strong> Ensure a file named <code className="bg-card p-0.5 rounded">.env.local</code> exists in your project's **absolute root directory**.</li>
-              <li><strong>API Key Value:</strong> Inside <code className="bg-card p-0.5 rounded">.env.local</code>, confirm the line: <code className="bg-card p-0.5 rounded">NEXT_PUBLIC_GOMAPS_PRO_API_KEY=YOUR_API_KEY_HERE</code> (replace with your actual key, e.g., AlzaSyxap6A_EcHW72khGw8I6awbRRUcv8sYmbG).</li>
+              <li><strong>API Key Value:</strong> Inside <code className="bg-card p-0.5 rounded">.env.local</code>, confirm the line: <code className="bg-card p-0.5 rounded">NEXT_PUBLIC_GOMAPS_PRO_API_KEY=YOUR_API_KEY_HERE</code>.</li>
               <li><strong>Restart Server:</strong> **CRITICAL STEP:** After creating or modifying <code className="bg-card p-0.5 rounded">.env.local</code>, you **MUST** restart your Next.js development server.</li>
               <li><strong>API Provider Dashboard:</strong> 
                 For GoMaps Pro, verify your key's status and permissions. If you suspect it uses Google services, check your Google Cloud Console (ensure Maps JavaScript API & Places API are enabled, billing is active, and quotas are fine).
               </li>
-              <li><strong>Network & Browser Console:</strong> Check your internet connection and look for more specific errors in your browser's Network tab or Console (F12 Developer Tools).</li>
+              <li><strong>Network & Browser Console:</strong> Check your internet connection and look for more specific errors in your browser's Network tab or Console (F12 Developer Tools). Try accessing the script/CSS URLs (shown in console errors) directly in your browser.</li>
             </ol>
             <p className="mt-2">For details on Next.js environment variables, see the <Link href="https://nextjs.org/docs/app/building-your-application/configuring/environment-variables" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Next.js Documentation</Link>.</p>
           </div>
@@ -470,3 +451,4 @@ const MapComponent: React.FC<MapComponentProps> = ({
 };
 
 export default MapComponent;
+
