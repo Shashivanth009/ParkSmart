@@ -15,17 +15,31 @@ const firebaseConfig = {
   appId: "1:825624994828:web:c0d88f84da6078023f7a29"
 };
 
-let app: FirebaseApp;
-let auth: Auth;
-let db: Firestore;
+let app: FirebaseApp | null = null;
+let auth: Auth | null = null;
+let db: Firestore | null = null;
+let firebaseInitialized = false;
+let firebaseInitializationError: Error | null = null;
 
-if (getApps().length === 0) {
-  app = initializeApp(firebaseConfig);
-} else {
-  app = getApps()[0];
+try {
+  if (getApps().length === 0) {
+    app = initializeApp(firebaseConfig);
+  } else {
+    app = getApps()[0];
+  }
+  
+  if (app) {
+    auth = getAuth(app);
+    db = getFirestore(app);
+    firebaseInitialized = true;
+  } else {
+    throw new Error("Firebase app object is null after initialization attempt.");
+  }
+
+} catch (error) {
+  console.error("Firebase initialization failed:", error);
+  firebaseInitializationError = error instanceof Error ? error : new Error(String(error));
+  // app, auth, db will remain null
 }
 
-auth = getAuth(app);
-db = getFirestore(app);
-
-export { app, auth, db };
+export { app, auth, db, firebaseInitialized, firebaseInitializationError };

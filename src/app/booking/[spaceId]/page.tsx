@@ -29,6 +29,14 @@ const fetchSpaceDetails = async (spaceId: string): Promise<ParkingSpace | null> 
   return mockSpaces.find(s => s.id === spaceId) || null;
 };
 
+// Required for static export of dynamic routes
+export async function generateStaticParams() {
+  // We don't want to pre-render any specific booking pages at build time
+  // for a fully static export of this dynamic route.
+  // The page will fetch data client-side based on the spaceId from the URL.
+  return [];
+}
+
 const FeatureDisplay = ({ feature }: { feature: ParkingFeature }) => {
   const Icon = featureIcons[feature] || Car;
   const label = featureLabels[feature] || feature.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
