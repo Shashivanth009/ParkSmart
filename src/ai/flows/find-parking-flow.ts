@@ -30,7 +30,7 @@ const ParkingSlotSchema = z.object({
   }).describe("Geographical coordinates of the parking facility."),
   pricePerHour: z.number().optional().describe("Price per hour for this type of slot in this facility (e.g., USD). Ensure it's a positive number, ideally between 1.0 and 10.0."),
   
-  imageUrl: z.string().url().optional().describe("A placeholder image URL for the FACILITY, must be 'https://placehold.co/600x400.png'."),
+  imageUrl: z.string().optional().describe("A placeholder image URL for the FACILITY, must be 'https://placehold.co/600x400.png'."),
   dataAiHint: z.string().optional().describe("A two-word hint for the placeholder FACILITY image, e.g., 'restaurant parking', 'park entrance', 'hotel garage', 'mall exterior', 'street meters', 'office building'."),
   facilityRating: z.number().optional().describe("An overall user rating for the facility, a number between 1 and 5 (e.g., 4.2)."),
 
@@ -150,3 +150,4 @@ export async function findParkingSpots(input: FindParkingInput): Promise<Parking
   const result = await findParkingGenkitFlow(input);
   return result.parkingSlots;
 }
+
