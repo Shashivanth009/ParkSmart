@@ -9,7 +9,7 @@
  */
 
 import { ai } from '@/ai/genkit';
-import type { ParkingSpace } from '@/types'; // ParkingFeature for input still
+import type { ParkingSpace } from '@/types';
 import { z } from 'genkit';
 
 // Define a Zod schema for individual parking SLOTS consistent with the ParkingSpace type
@@ -31,7 +31,7 @@ const ParkingSlotSchema = z.object({
   pricePerHour: z.number().positive().optional().describe("Price per hour for this type of slot in this facility (e.g., USD)."),
   
   imageUrl: z.string().url().optional().describe("A placeholder image URL for the FACILITY, should be 'https://placehold.co/600x400.png'."),
-  dataAiHint: z.string().optional().describe("A two-word hint for the placeholder FACILITY image, e.g., 'parking garage' or 'city parking'."),
+  dataAiHint: z.string().optional().describe("A two-word hint for the placeholder FACILITY image, e.g., 'restaurant parking', 'park entrance', 'hotel garage', 'mall exterior', 'street meters', 'office building'."),
   facilityRating: z.number().min(1).max(5).optional().describe("An overall user rating for the facility between 1 and 5."),
 
   availability: z.enum(['high', 'medium', 'low', 'full']).optional().describe("Overall availability in the FACILITY (less critical for individual slot status)."),
@@ -60,29 +60,29 @@ const findParkingPrompt = ai.definePrompt({
   input: { schema: FindParkingInputSchema },
   output: { schema: FindParkingOutputSchema },
   prompt: `You are an AI assistant that helps users find fictional parking slots for a prototype application.
-Given a location name ({{{locationName}}}), a search radius of {{{searchRadiusKm}}} km, and optionally, a list of desired general facility features ({{#if desiredFeatures}}{{#each desiredFeatures}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}any{{/if}}), please generate a list of 10 to 15 distinct, fictional parking SLOTS.
+Given a location name ({{{locationName}}}), a search radius of {{{searchRadiusKm}}} km, and optionally, a list of desired general facility features ({{#if desiredFeatures}}{{#each desiredFeatures}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}{{else}}any{{/if}}), you MUST generate a list of 10 to 15 distinct, fictional parking SLOTS. Do not under any circumstances return an empty list or fewer than 10 slots; be creative and imagine possibilities if needed.
 
-These slots should be plausibly located near or associated with common points of interest such as restaurants, public parks, shopping centers, transport hubs, or public buildings that one might find in or near "{{{locationName}}}".
+These slots MUST be plausibly located near or associated with common points of interest such as restaurants, public parks, shopping centers, hotels, transport hubs, or public buildings that one might find in or near "{{{locationName}}}".
 The slots can be from one or multiple conceptual parking facilities that would plausibly be in the searched area.
 
 For each parking SLOT, you must provide the following details:
 - id: A unique identifier string for the slot, like 'slot-ai-park-restaurant-s1'.
 - slotLabel: A short label for the slot, like "#12" or "B-07".
-- floorLevel: The floor or level, like "Floor 1", "P3", "Restaurant Valet Area".
+- floorLevel: The floor or level, like "Floor 1", "P3", "Restaurant Valet Area", "Hotel Basement P2".
 - isOccupied: A boolean (true or false) indicating if the slot is currently occupied.
 - vehicleIdOccupying: (Only if isOccupied is true) A fictional vehicle license plate or ID, like "TS09FOODIE".
 - occupiedSince: (Only if isOccupied is true) A short string indicating when it was occupied, like "Since: 1:30 PM" or "45 min ago".
 - slotType: Choose one type for the slot: 'standard', 'accessible', or 'ev-charging'. If user requested 'ev-charging' or 'disabled-access' as a desired feature, try to include slots of that type.
-- facilityName: The name of the parking facility this slot belongs to (e.g., "Park 'n Dine Central", "GreenView Parkade", "Market Square Garage"). Make up 1-3 plausible facility names reflecting the context (e.g., near a park, restaurant) and distribute the 10-15 slots among them.
+- facilityName: The name of the parking facility this slot belongs to (e.g., "Park 'n Dine Central", "GreenView Parkade", "Market Square Garage", "Grand Hotel Parking", "City Park Lot"). Make up 1-3 plausible facility names reflecting the context (e.g., near a park, restaurant, hotel) and distribute the 10-15 slots among them.
 - facilityAddress: A plausible street address for the facility, relevant to "{{{locationName}}}".
 - facilityCoordinates: An object with 'lat' and 'lng' for the FACILITY. These coordinates should be plausible for "{{{locationName}}}" and fall roughly within the {{{searchRadiusKm}}} km radius. Slots within the same facility should share these coordinates.
 - pricePerHour: (Optional) A reasonable price per hour for this slot type/facility (e.g., between 1.0 and 5.0 USD).
 - imageUrl: This must be exactly 'https://placehold.co/600x400.png' for the FACILITY.
-- dataAiHint: A two-word hint for the placeholder FACILITY image, reflecting the facility type (e.g., "restaurant parking", "park entrance", "shopping mall").
+- dataAiHint: A two-word hint for the placeholder FACILITY image, reflecting the facility type or context (e.g., "restaurant parking", "park entrance", "hotel garage", "shopping mall", "office building"). Be varied.
 - facilityRating: (Optional) An overall rating for the FACILITY (1.0-5.0).
 
 Ensure the generated slots are varied in their occupancy status and type. If 'desiredFeatures' includes 'ev-charging' or 'disabled-access', make sure to generate some slots with matching 'slotType'.
-The primary output should be the list of individual parking slots.
+The primary output should be the list of individual parking slots. Your response MUST contain 10 to 15 slots.
 `,
 });
 
@@ -94,9 +94,23 @@ const findParkingGenkitFlow = ai.defineFlow(
   },
   async (input) => {    
     const { output } = await findParkingPrompt(input);
-    if (!output) {
-        console.warn('AI prompt did not return output for findParkingSlotsGenkitFlow. Input:', input);
-        return { parkingSlots: [] };
+    if (!output || !output.parkingSlots || output.parkingSlots.length === 0) {
+        console.warn('AI prompt did not return expected output for findParkingSlotsGenkitFlow. Input:', input);
+        // Fallback: Generate some very basic dummy slots if AI fails, though the prompt now strongly discourages this.
+        return { parkingSlots: Array.from({ length: 10 }, (_, i) => ({
+            id: `fallback-slot-${i}`,
+            slotLabel: `F${i+1}`,
+            floorLevel: 'Ground',
+            isOccupied: i % 2 === 0,
+            slotType: 'standard',
+            facilityName: 'Fallback Facility',
+            facilityAddress: input.locationName || 'Unknown Location',
+            facilityCoordinates: { lat: 17.3850, lng: 78.4867 }, // Default to a known location
+            imageUrl: 'https://placehold.co/600x400.png',
+            dataAiHint: 'generic parking',
+            pricePerHour: 2.0,
+            facilityRating: 3.0
+        })) as ParkingSpace[]};
     }
 
     const processedSlots = output.parkingSlots.map(slot => {
@@ -105,12 +119,11 @@ const findParkingGenkitFlow = ai.defineFlow(
             processedSlot.vehicleIdOccupying = undefined;
             processedSlot.occupiedSince = undefined;
         }
-        // Ensure placeholder details if AI misses them or provides invalid ones
         if (!processedSlot.imageUrl || !processedSlot.imageUrl.startsWith('https://placehold.co/')) {
             processedSlot.imageUrl = 'https://placehold.co/600x400.png';
         }
         if (!processedSlot.dataAiHint || processedSlot.dataAiHint.split(' ').length > 2) {
-            processedSlot.dataAiHint = 'parking area'; // Default if missing or too long
+            processedSlot.dataAiHint = 'parking area'; 
         }
         return processedSlot;
     });
@@ -123,3 +136,6 @@ export async function findParkingSpots(input: FindParkingInput): Promise<Parking
   const result = await findParkingGenkitFlow(input);
   return result.parkingSlots;
 }
+
+
+    

@@ -14,10 +14,10 @@ import Link from 'next/link';
 import Image from 'next/image';
 import type { ParkingSpace } from '@/types';
 
-const mockFeaturedSpaces: ParkingSpace[] = [
-  { id: 'ps1', name: 'Charminar Parking Plaza', address: 'Near Charminar, Hyderabad', availability: 'high', pricePerHour: 2.5, features: ['covered', 'ev-charging', 'cctv'], coordinates: { lat: 17.3616, lng: 78.4747 }, rating: 4.5, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 50, totalSpots: 100, dataAiHint: "parking garage building" },
-  { id: 'ps2', name: 'Hitech City Secure Park', address: 'Mindspace Circle, Hyderabad', availability: 'medium', pricePerHour: 3.0, features: ['cctv', 'secure'], coordinates: { lat: 17.4474, lng: 78.3762 }, rating: 4.2, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 20, totalSpots: 80, dataAiHint: "parking garage building" },
-  { id: 'ps3', name: 'Gachibowli Stadium Lot', address: 'Old Mumbai Hwy, Hyderabad', availability: 'low', pricePerHour: 1.8, features: ['covered', 'secure', 'well-lit'], coordinates: { lat: 17.4417, lng: 78.3498 }, rating: 4.0, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 5, totalSpots: 150, dataAiHint: "parking garage building" },
+const mockFeaturedSpaces: Omit<ParkingSpace, 'slotLabel' | 'floorLevel' | 'isOccupied' | 'slotType'>[] = [ // Adjusted type for featured spaces
+  { id: 'ps1', facilityName: 'Charminar Parking Plaza', facilityAddress: 'Near Charminar, Hyderabad', availability: 'high', pricePerHour: 2.5, features: ['covered', 'ev-charging', 'cctv'], facilityCoordinates: { lat: 17.3616, lng: 78.4747 }, facilityRating: 4.5, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 50, totalSpots: 100, dataAiHint: "historic monument parking" },
+  { id: 'ps2', facilityName: 'Hitech City Secure Park', facilityAddress: 'Mindspace Circle, Hyderabad', availability: 'medium', pricePerHour: 3.0, features: ['cctv', 'secure'], facilityCoordinates: { lat: 17.4474, lng: 78.3762 }, facilityRating: 4.2, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 20, totalSpots: 80, dataAiHint: "tech park garage" },
+  { id: 'ps3', facilityName: 'Gachibowli Stadium Lot', facilityAddress: 'Old Mumbai Hwy, Hyderabad', availability: 'low', pricePerHour: 1.8, features: ['covered', 'secure', 'well-lit'], facilityCoordinates: { lat: 17.4417, lng: 78.3498 }, facilityRating: 4.0, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 5, totalSpots: 150, dataAiHint: "stadium parking lot" },
 ];
 
 const INITIAL_HOMEPAGE_MAP_CENTER = { lat: 17.3850, lng: 78.4867 }; // Hyderabad
@@ -27,7 +27,8 @@ export default function HomePage() {
   const router = useRouter();
   const heroSearchInputRef = useRef<HTMLInputElement>(null);
   const [mapCenter, setMapCenter] = useState(INITIAL_HOMEPAGE_MAP_CENTER);
-  const [userInteractedWithMap, setUserInteractedWithMap] = useState(false);
+  const [userInteractedWithMap, setUserInteractedWithMap] = useState(false); // To track if map interaction set the query
+
 
   const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -38,10 +39,11 @@ export default function HomePage() {
       queryParams.set('location', searchQuery.trim());
     }
 
-    if (userInteractedWithMap) { // If user selected a specific place on the map
+    // If user selected a specific place via map autocomplete on homepage, pass its coords and a radius
+    if (userInteractedWithMap) { 
       queryParams.set('lat', mapCenter.lat.toString());
       queryParams.set('lng', mapCenter.lng.toString());
-      queryParams.set('radius', '2'); // Default to 2km radius for map-initiated search from homepage
+      queryParams.set('radius', '2'); // Default to 2km radius for initial map-assisted search from homepage
     }
 
     if (queryParams.toString()) {
@@ -54,7 +56,7 @@ export default function HomePage() {
     if (place.geometry?.location) {
       const newCenter = { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() };
       setMapCenter(newCenter);
-      setUserInteractedWithMap(true);
+      setUserInteractedWithMap(true); // Mark that user selected from map suggestions
       if (place.name) {
         setSearchQuery(place.name);
       } else if (place.formatted_address) {
@@ -111,13 +113,13 @@ export default function HomePage() {
               Explore Parking Availability
             </h2>
             <MapComponent
-              markers={mockFeaturedSpaces.map(s => ({ id: s.id, lat: s.coordinates.lat, lng: s.coordinates.lng, label: s.name }))}
+              markers={mockFeaturedSpaces.map(s => ({ id: s.id, lat: s.facilityCoordinates.lat, lng: s.facilityCoordinates.lng, label: s.facilityName }))}
               center={mapCenter}
               interactive={true}
               showMyLocationButton={true}
               className="rounded-xl shadow-2xl"
               onMarkerClick={(id) => router.push(`/booking/${id}`)}
-              autocompleteInputRef={heroSearchInputRef}
+              autocompleteInputRef={heroSearchInputRef} 
               onPlaceSelected={handlePlaceSelected}
             />
             <div className="text-center mt-8">
@@ -190,21 +192,21 @@ export default function HomePage() {
                 <Card key={space.id} className="overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300">
                   <Image
                     src={space.imageUrl!}
-                    alt={space.name}
+                    alt={space.facilityName}
                     width={600}
                     height={400}
                     className="w-full h-48 object-cover"
                     data-ai-hint={space.dataAiHint || "parking garage building"} />
                   <CardHeader>
-                    <CardTitle>{space.name}</CardTitle>
-                    <CardDescription>{space.address}</CardDescription>
+                    <CardTitle>{space.facilityName}</CardTitle>
+                    <CardDescription>{space.facilityAddress}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="flex justify-between items-center mb-2 text-sm">
                       <span className={`font-semibold ${space.availability === 'high' ? 'text-green-400' : space.availability === 'medium' ? 'text-yellow-400' : 'text-red-400'}`}>
-                        {space.availability.toUpperCase()}
+                        {space.availability?.toUpperCase()}
                       </span>
-                      <span className="text-lg font-bold text-primary">${space.pricePerHour.toFixed(2)}/hr</span>
+                      <span className="text-lg font-bold text-primary">${space.pricePerHour?.toFixed(2)}/hr</span>
                     </div>
                     <p className="text-xs text-muted-foreground">{space.availableSpots} / {space.totalSpots} spots available</p>
                     <Button className="w-full mt-4" asChild>
@@ -222,5 +224,7 @@ export default function HomePage() {
     </div>
   );
 }
+
+    
 
     
