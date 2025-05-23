@@ -28,16 +28,16 @@ const ParkingSlotSchema = z.object({
     lat: z.number().describe("Latitude of the facility, plausible value near the searched location."),
     lng: z.number().describe("Longitude of the facility, plausible value near the searched location."),
   }).describe("Geographical coordinates of the parking facility."),
-  pricePerHour: z.number().positive().optional().describe("Price per hour for this type of slot in this facility (e.g., USD)."),
+  pricePerHour: z.number().optional().describe("Price per hour for this type of slot in this facility (e.g., USD). Ensure it's a positive number, ideally between 1.0 and 10.0."),
   
-  imageUrl: z.string().url().optional().describe("A placeholder image URL for the FACILITY, should be 'https://placehold.co/600x400.png'."),
+  imageUrl: z.string().url().optional().describe("A placeholder image URL for the FACILITY, must be 'https://placehold.co/600x400.png'."),
   dataAiHint: z.string().optional().describe("A two-word hint for the placeholder FACILITY image, e.g., 'restaurant parking', 'park entrance', 'hotel garage', 'mall exterior', 'street meters', 'office building'."),
-  facilityRating: z.number().min(1).max(5).optional().describe("An overall user rating for the facility between 1 and 5."),
+  facilityRating: z.number().optional().describe("An overall user rating for the facility, a number between 1 and 5 (e.g., 4.2)."),
 
   availability: z.enum(['high', 'medium', 'low', 'full']).optional().describe("Overall availability in the FACILITY (less critical for individual slot status)."),
   features: z.array(z.enum(['covered', 'ev-charging', 'cctv', 'disabled-access', 'well-lit', 'secure'])).optional().describe("List of general features of the FACILITY."),
-  totalSpots: z.number().int().positive().optional().describe("Total number of spots in the FACILITY."),
-  availableSpots: z.number().int().min(0).optional().describe("Number of currently available spots in the FACILITY."),
+  totalSpots: z.number().int().optional().describe("Total number of spots in the FACILITY. Must be a positive integer."),
+  availableSpots: z.number().int().optional().describe("Number of currently available spots in the FACILITY. Must be a non-negative integer, and not more than totalSpots."),
 });
 
 
@@ -76,10 +76,12 @@ For each parking SLOT, you must provide the following details:
 - facilityName: The name of the parking facility this slot belongs to (e.g., "Park 'n Dine Central", "GreenView Parkade", "Market Square Garage", "Grand Hotel Parking", "City Park Lot"). Make up 1-3 plausible facility names reflecting the context (e.g., near a park, restaurant, hotel) and distribute the 10-15 slots among them.
 - facilityAddress: A plausible street address for the facility, relevant to "{{{locationName}}}".
 - facilityCoordinates: An object with 'lat' and 'lng' for the FACILITY. These coordinates should be plausible for "{{{locationName}}}" and fall roughly within the {{{searchRadiusKm}}} km radius. Slots within the same facility should share these coordinates.
-- pricePerHour: (Optional) A reasonable price per hour for this slot type/facility (e.g., between 1.0 and 5.0 USD).
+- pricePerHour: (Optional) A reasonable price per hour for this slot type/facility (e.g., a number between 1.0 and 10.0, like 2.5 or 3.0).
 - imageUrl: This must be exactly 'https://placehold.co/600x400.png' for the FACILITY.
 - dataAiHint: A two-word hint for the placeholder FACILITY image, reflecting the facility type or context (e.g., "restaurant parking", "park entrance", "hotel garage", "shopping mall", "office building"). Be varied.
-- facilityRating: (Optional) An overall rating for the FACILITY (1.0-5.0).
+- facilityRating: (Optional) An overall rating for the FACILITY (e.g., a number between 1.0 and 5.0, like 3.5 or 4.8).
+- totalSpots: (Optional) Total number of spots in the FACILITY (e.g., 50, 120). Must be a positive integer.
+- availableSpots: (Optional) Number of currently available spots in the FACILITY (e.g., 15, 40). Must be a non-negative integer, and not more than totalSpots.
 
 Ensure the generated slots are varied in their occupancy status and type. If 'desiredFeatures' includes 'ev-charging' or 'disabled-access', make sure to generate some slots with matching 'slotType'.
 The primary output should be the list of individual parking slots. Your response MUST contain 10 to 15 slots.
@@ -98,7 +100,7 @@ const findParkingGenkitFlow = ai.defineFlow(
         console.warn('AI prompt did not return expected output for findParkingSlotsGenkitFlow. Input:', input);
         // Fallback: Generate some very basic dummy slots if AI fails, though the prompt now strongly discourages this.
         return { parkingSlots: Array.from({ length: 10 }, (_, i) => ({
-            id: `fallback-slot-${i}`,
+            id: `fallback-slot-${Date.now()}-${i}`, // Ensure unique fallback IDs
             slotLabel: `F${i+1}`,
             floorLevel: 'Ground',
             isOccupied: i % 2 === 0,
@@ -109,7 +111,9 @@ const findParkingGenkitFlow = ai.defineFlow(
             imageUrl: 'https://placehold.co/600x400.png',
             dataAiHint: 'generic parking',
             pricePerHour: 2.0,
-            facilityRating: 3.0
+            facilityRating: 3.0,
+            totalSpots: 20,
+            availableSpots: 10,
         })) as ParkingSpace[]};
     }
 
@@ -125,6 +129,16 @@ const findParkingGenkitFlow = ai.defineFlow(
         if (!processedSlot.dataAiHint || processedSlot.dataAiHint.split(' ').length > 2) {
             processedSlot.dataAiHint = 'parking area'; 
         }
+        // Ensure pricePerHour is a number and positive if present
+        if (processedSlot.pricePerHour !== undefined) {
+            const price = Number(processedSlot.pricePerHour);
+            processedSlot.pricePerHour = isNaN(price) || price < 0 ? undefined : price;
+        }
+         // Ensure facilityRating is a number and within range if present
+        if (processedSlot.facilityRating !== undefined) {
+            const rating = Number(processedSlot.facilityRating);
+            processedSlot.facilityRating = isNaN(rating) || rating < 0 || rating > 5 ? undefined : rating;
+        }
         return processedSlot;
     });
 
@@ -136,6 +150,3 @@ export async function findParkingSpots(input: FindParkingInput): Promise<Parking
   const result = await findParkingGenkitFlow(input);
   return result.parkingSlots;
 }
-
-
-    
