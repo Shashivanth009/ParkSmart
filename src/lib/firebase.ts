@@ -1,18 +1,18 @@
+
 // IMPORTANT: User must populate this file with their Firebase project configuration.
 
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 
-// TODO: Replace with your actual Firebase project configuration
+// Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID",
-  measurementId: "YOUR_MEASUREMENT_ID" // Optional
+  apiKey: "AIzaSyCY56IeVniiID4OfD0nRh2xQNPtoAZxMvo",
+  authDomain: "parksmart-q73kd.firebaseapp.com",
+  projectId: "parksmart-q73kd",
+  storageBucket: "parksmart-q73kd.appspot.com", // Corrected: appspot.com instead of firebasestorage.app
+  messagingSenderId: "825624994828",
+  appId: "1:825624994828:web:c0d88f84da6078023f7a29"
 };
 
 let app: FirebaseApp;
@@ -29,3 +29,4 @@ auth = getAuth(app);
 db = getFirestore(app);
 
 export { app, auth, db };
+
