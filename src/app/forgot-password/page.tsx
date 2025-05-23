@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from 'next/link';
@@ -9,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { AppLogo } from '@/components/core/AppLogo';
-import { toast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth'; // Import useAuth
 import { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 
@@ -20,7 +21,8 @@ const forgotPasswordSchema = z.object({
 type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
 
 export default function ForgotPasswordPage() {
-  const [loading, setLoading] = useState(false);
+  const { sendPasswordResetEmail, loading: authLoading } = useAuth(); // Use loading from useAuth
+  const [formLoading, setFormLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
   const form = useForm<ForgotPasswordFormValues>({
@@ -31,16 +33,17 @@ export default function ForgotPasswordPage() {
   });
 
   async function onSubmit(values: ForgotPasswordFormValues) {
-    setLoading(true);
-    // Simulate API call for password reset email
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    console.log("Password reset requested for:", values.email);
-    setLoading(false);
-    setSubmitted(true);
-    toast({
-      title: "Check Your Email",
-      description: `If an account exists for ${values.email}, you will receive a password reset link.`,
-    });
+    setFormLoading(true);
+    try {
+      await sendPasswordResetEmail(values.email);
+      // Toast notification is handled within useAuth's sendPasswordResetEmail
+      setSubmitted(true);
+    } catch (error) {
+      // Error is already handled by toast in useAuth
+      console.error("Forgot password submit error:", error);
+    } finally {
+      setFormLoading(false);
+    }
   }
 
   if (submitted) {
@@ -55,7 +58,7 @@ export default function ForgotPasswordPage() {
           </CardHeader>
           <CardContent>
             <p className="text-center text-muted-foreground">
-              A password reset link has been sent to your email address if it's associated with an account. Please check your inbox (and spam folder).
+              If an account exists for the provided email, a password reset link has been sent. Please check your inbox (and spam folder).
             </p>
           </CardContent>
           <CardFooter>
@@ -97,8 +100,8 @@ export default function ForgotPasswordPage() {
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "Sending Link..." : "Send Reset Link"}
+              <Button type="submit" className="w-full" disabled={formLoading || authLoading}>
+                {formLoading || authLoading ? "Sending Link..." : "Send Reset Link"}
               </Button>
             </form>
           </Form>

@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from 'next/link';
@@ -9,9 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useAuth } from '@/hooks/useAuth';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { AppLogo } from '@/components/core/AppLogo';
-import { ChromeIcon } from 'lucide-react'; // Using ChromeIcon as a generic browser/Google icon
+import { ChromeIcon } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { useEffect } from 'react';
 
@@ -23,14 +24,29 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
-  const { login, loading, isAuthenticated } = useAuth();
+  const { loginWithEmail, loginWithGoogle, loading, isAuthenticated } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     if (isAuthenticated) {
-      router.push('/dashboard');
+      const redirectPath = searchParams.get('redirect') || '/dashboard';
+      router.push(redirectPath);
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, router, searchParams]);
+
+  useEffect(() => {
+    const message = searchParams.get('message');
+    if (message === 'verification-sent') {
+      toast({
+        title: "Verification Email Sent",
+        description: "Please check your inbox to verify your email address before logging in.",
+      });
+      // Clean the message from URL
+      router.replace('/login', { scroll: false });
+    }
+  }, [searchParams, router]);
+
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -40,34 +56,34 @@ export default function LoginPage() {
     },
   });
 
-  async function onSubmit(values: LoginFormValues) {
+  async function onEmailSubmit(values: LoginFormValues) {
     try {
-      await login('email', values);
-      toast({ title: "Login Successful", description: "Welcome back!" });
+      await loginWithEmail(values.email, values.password);
+      // Redirection is handled by useAuth or useEffect
     } catch (error) {
-      toast({ title: "Login Failed", description: "Invalid credentials. Please try again.", variant: "destructive" });
-      console.error("Login error:", error);
+      // Error is already handled by toast in useAuth
+      console.error("Login page email submit error:", error);
     }
   }
 
   async function handleGoogleLogin() {
     try {
-      await login('google');
-      toast({ title: "Login Successful", description: "Welcome!" });
+      await loginWithGoogle();
+      // Redirection is handled by useAuth or useEffect
     } catch (error) {
-      toast({ title: "Google Login Failed", description: "Could not sign in with Google. Please try again.", variant: "destructive" });
-      console.error("Google login error:", error);
+      // Error is already handled by toast in useAuth
+      console.error("Login page Google login error:", error);
     }
   }
   
-  if (isAuthenticated) {
-    // Typically handled by useEffect redirect, but good for initial render too
-    return (
-      <div className="flex min-h-screen items-center justify-center p-4">
-        <p>Redirecting to dashboard...</p>
-      </div>
-    );
-  }
+  // No need for this explicit loading redirect, useEffect handles it
+  // if (isAuthenticated) {
+  //   return (
+  //     <div className="flex min-h-screen items-center justify-center p-4">
+  //       <p>Redirecting to dashboard...</p>
+  //     </div>
+  //   );
+  // }
 
 
   return (
@@ -96,7 +112,7 @@ export default function LoginPage() {
             </div>
           </div>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onEmailSubmit)} className="space-y-4">
               <FormField
                 control={form.control}
                 name="email"
@@ -139,13 +155,9 @@ export default function LoginPage() {
         <CardFooter className="text-center text-sm">
           <p className="w-full">
             Don&apos;t have an account?{' '}
-            <Link href="/#how-it-works" className="font-medium text-primary hover:underline">
-              Learn More
-            </Link>
-            {/* In a real app, this might link to a signup page:
             <Link href="/signup" className="font-medium text-primary hover:underline">
               Sign Up
-            </Link> */}
+            </Link>
           </p>
         </CardFooter>
       </Card>

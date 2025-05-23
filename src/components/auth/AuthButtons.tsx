@@ -1,8 +1,9 @@
+
 "use client";
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth, type AuthUser } from '@/hooks/useAuth'; // Import AuthUser if needed
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -24,22 +25,26 @@ export function AuthButtons() {
   }
 
   if (isAuthenticated && user) {
+    const displayName = user.profile?.name || user.displayName || user.email?.split('@')[0] || 'User';
+    const displayEmail = user.email || 'No email available';
+    const avatarSrc = user.profile?.avatarUrl || user.photoURL || `https://placehold.co/100x100.png?text=${displayName.charAt(0).toUpperCase()}`;
+    
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="relative h-9 w-9 rounded-full">
             <Avatar className="h-9 w-9">
-              <AvatarImage src={user.avatarUrl} alt={user.name} data-ai-hint="user avatar" />
-              <AvatarFallback>{user.name?.charAt(0).toUpperCase()}</AvatarFallback>
+              <AvatarImage src={avatarSrc} alt={displayName} data-ai-hint="user avatar" />
+              <AvatarFallback>{displayName.charAt(0).toUpperCase()}</AvatarFallback>
             </Avatar>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-56" align="end" forceMount>
           <DropdownMenuLabel className="font-normal">
             <div className="flex flex-col space-y-1">
-              <p className="text-sm font-medium leading-none">{user.name}</p>
+              <p className="text-sm font-medium leading-none">{displayName}</p>
               <p className="text-xs leading-none text-muted-foreground">
-                {user.email}
+                {displayEmail}
               </p>
             </div>
           </DropdownMenuLabel>
@@ -67,10 +72,9 @@ export function AuthButtons() {
       <Button variant="outline" asChild>
         <Link href="/login">Login</Link>
       </Button>
-      {/* <Button asChild>
+      <Button asChild>
         <Link href="/signup">Sign Up</Link>
-      </Button> */}
-      {/* SignUp page is not explicitly requested, can be added later */}
+      </Button>
     </div>
   );
 }

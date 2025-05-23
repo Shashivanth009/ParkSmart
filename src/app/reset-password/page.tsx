@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from 'next/link';
@@ -9,10 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { AppLogo } from '@/components/core/AppLogo';
-import { toast } from '@/hooks/use-toast';
-import { useState, useEffect } from 'react';
+import { useAuth } from '@/hooks/useAuth'; // Import useAuth
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { CheckCircle, AlertTriangle } from 'lucide-react';
+import { CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
 
 const resetPasswordSchema = z.object({
   newPassword: z.string().min(8, { message: "Password must be at least 8 characters." })
@@ -22,25 +23,24 @@ const resetPasswordSchema = z.object({
   confirmPassword: z.string(),
 }).refine(data => data.newPassword === data.confirmPassword, {
   message: "Passwords don't match.",
-  path: ["confirmPassword"], // path to show error under
+  path: ["confirmPassword"],
 });
 
 type ResetPasswordFormValues = z.infer<typeof resetPasswordSchema>;
 
-export default function ResetPasswordPage() {
-  const [loading, setLoading] = useState(false);
+function ResetPasswordPageComponent() {
+  const { confirmPasswordReset, loading: authLoading } = useAuth(); // Use loading from useAuth
+  const [formLoading, setFormLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const searchParams = useSearchParams();
   const router = useRouter();
-  const token = searchParams.get('token');
+  const token = searchParams.get('oobCode'); // Firebase uses 'oobCode' for password reset tokens
 
   useEffect(() => {
-    if (!token) {
-      setMessage({ type: 'error', text: 'Invalid or missing password reset token.' });
-      // Optionally redirect after a delay
-      // setTimeout(() => router.push('/login'), 3000);
+    if (!token && !message) { // Check if message is already set to avoid overriding success/error
+      setMessage({ type: 'error', text: 'Invalid or missing password reset token. Please request a new one.' });
     }
-  }, [token, router]);
+  }, [token, message, router]);
 
   const form = useForm<ResetPasswordFormValues>({
     resolver: zodResolver(resetPasswordSchema),
@@ -52,22 +52,24 @@ export default function ResetPasswordPage() {
 
   async function onSubmit(values: ResetPasswordFormValues) {
     if (!token) {
-        toast({ title: "Error", description: "Invalid reset token.", variant: "destructive" });
-        return;
+      setMessage({ type: 'error', text: "Invalid reset token. Please try the reset process again." });
+      return;
     }
-    setLoading(true);
+    setFormLoading(true);
     setMessage(null);
-    // Simulate API call for password reset
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    console.log("Password reset successful for token:", token, "New password:", values.newPassword);
-    setLoading(false);
-    setMessage({ type: 'success', text: 'Your password has been reset successfully!' });
-    toast({
-      title: "Password Reset Successful",
-      description: "You can now log in with your new password.",
-    });
-    form.reset();
-    setTimeout(() => router.push('/login'), 2000);
+    try {
+      await confirmPasswordReset(token, values.newPassword);
+      // Toast and redirection handled by useAuth's confirmPasswordReset
+      setMessage({ type: 'success', text: 'Your password has been reset successfully! Redirecting to login...' });
+      form.reset();
+      // setTimeout(() => router.push('/login'), 2000); // Redirection now in useAuth
+    } catch (error: any) {
+      // Error already handled by toast in useAuth
+      setMessage({ type: 'error', text: error.message || "Failed to reset password. The link may be invalid or expired." });
+      console.error("Reset password submit error:", error);
+    } finally {
+      setFormLoading(false);
+    }
   }
   
   return (
@@ -88,13 +90,7 @@ export default function ResetPasswordPage() {
             </div>
           )}
 
-          {!token && !message && (
-             <div className={`mb-4 p-3 rounded-md text-sm flex items-center bg-red-500/20 text-red-300`}>
-                <AlertTriangle className="mr-2 h-5 w-5" /> Invalid or missing password reset token.
-            </div>
-          )}
-
-          {token && !message?.text.includes("successfully") && (
+          {!message?.text.includes("successfully") && token && ( // Only show form if token exists and not success
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <FormField
@@ -123,8 +119,8 @@ export default function ResetPasswordPage() {
                     </FormItem>
                   )}
                 />
-                <Button type="submit" className="w-full" disabled={loading || !token}>
-                  {loading ? "Resetting Password..." : "Reset Password"}
+                <Button type="submit" className="w-full" disabled={formLoading || authLoading || !token}>
+                  {formLoading || authLoading ? "Resetting Password..." : "Reset Password"}
                 </Button>
               </form>
             </Form>
@@ -137,5 +133,13 @@ export default function ResetPasswordPage() {
         </CardFooter>
       </Card>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>}>
+      <ResetPasswordPageComponent />
+    </Suspense>
   );
 }

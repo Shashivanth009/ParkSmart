@@ -1,3 +1,4 @@
+
 "use client";
 import { useState, useEffect } from 'react';
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -31,7 +32,6 @@ interface BookingFormProps {
   defaultVehiclePlate?: string;
 }
 
-// Generate time slots (e.g., every 30 minutes)
 const generateTimeSlots = () => {
   const slots = [];
   for (let h = 0; h < 24; h++) {
@@ -50,19 +50,26 @@ export function BookingForm({ space, onSubmit, defaultVehiclePlate }: BookingFor
   const form = useForm<BookingFormValues>({
     resolver: zodResolver(bookingFormSchema),
     defaultValues: {
-      date: startOfHour(addHours(new Date(), 1)), // Default to next hour
+      date: startOfHour(addHours(new Date(), 1)), 
       startTime: format(startOfHour(addHours(new Date(), 1)), "HH:mm"),
-      duration: 1, // Default 1 hour
+      duration: 1, 
       vehiclePlate: defaultVehiclePlate || "",
     },
   });
+  
+  // Watch for changes in defaultVehiclePlate prop
+  useEffect(() => {
+    if (defaultVehiclePlate) {
+      form.setValue('vehiclePlate', defaultVehiclePlate);
+    }
+  }, [defaultVehiclePlate, form]);
 
   const selectedDate = form.watch("date");
   const selectedStartTime = form.watch("startTime");
   const selectedDuration = form.watch("duration");
 
   useEffect(() => {
-    if (selectedDate && selectedStartTime && selectedDuration > 0) {
+    if (selectedDate && selectedStartTime && selectedDuration > 0 && space.pricePerHour !== undefined) {
       const [hours, minutes] = selectedStartTime.split(':').map(Number);
       const startDateTime = setMinutes(setHours(selectedDate, hours), minutes);
       
@@ -85,12 +92,15 @@ export function BookingForm({ space, onSubmit, defaultVehiclePlate }: BookingFor
   }, [selectedDate, selectedStartTime, selectedDuration, space.pricePerHour, form]);
 
   function processSubmit(values: BookingFormValues) {
-    if (calculatedEndTime) {
+    if (calculatedEndTime && space.pricePerHour !== undefined) { // Check pricePerHour too
       onSubmit(values, totalCost, calculatedEndTime);
     } else {
-      // This case should ideally be prevented by form validation
-      form.setError("duration", {type: "manual", message: "Invalid booking time or duration."});
+      form.setError("duration", {type: "manual", message: "Invalid booking time, duration, or price missing."});
     }
+  }
+
+  if (space.pricePerHour === undefined) {
+    return <p className="text-destructive text-center">Pricing information for this space is currently unavailable. Booking cannot proceed.</p>
   }
 
   return (
@@ -122,7 +132,7 @@ export function BookingForm({ space, onSubmit, defaultVehiclePlate }: BookingFor
                     mode="single"
                     selected={field.value}
                     onSelect={field.onChange}
-                    disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1)) } // Disable past dates
+                    disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1)) } 
                     initialFocus
                   />
                 </PopoverContent>

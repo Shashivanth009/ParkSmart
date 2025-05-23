@@ -1,5 +1,7 @@
 
 import type { LucideIcon } from 'lucide-react';
+import type { Timestamp } from 'firebase/firestore';
+
 
 // Represents an individual parking slot with facility context
 export interface ParkingSpace {
@@ -21,11 +23,7 @@ export interface ParkingSpace {
   dataAiHint?: string; // Hint for the FACILITY image (e.g., "parking garage interior")
   facilityRating?: number; // Overall rating of the parking facility
 
-  // These are original facility-level attributes, might be less directly used on slot card
-  // but good for AI to generate and for broader filtering if needed.
-  // The AI flow will now generate these at a conceptual "facility" level if providing multiple slots for it.
-  // For now, each ParkingSpace is a slot, but these fields provide context.
-  availability?: 'high' | 'medium' | 'low' | 'full'; // Overall facility availability, less relevant for individual slot status
+  availability?: 'high' | 'medium' | 'low' | 'full'; // Overall facility availability
   features?: Array<'covered' | 'ev-charging' | 'cctv' | 'disabled-access' | 'well-lit' | 'secure'>; // Facility features
   totalSpots?: number; // Total spots in the facility
   availableSpots?: number; // Available spots in the facility (facility-wide)
@@ -34,7 +32,7 @@ export interface ParkingSpace {
 
 export interface Booking {
   id: string;
-  spaceId: string; // Corresponds to ParkingSpace.id if booking a specific slot, or facility ID
+  spaceId: string; 
   spaceName: string;
   spaceAddress: string;
   startTime: string; // ISO string
@@ -45,8 +43,9 @@ export interface Booking {
 }
 
 export interface UserProfile {
+  // uid will be the document ID in Firestore, same as Firebase Auth uid
   name: string;
-  email: string;
+  email: string; // Stored for convenience, but Firebase Auth email is source of truth
   phone?: string;
   avatarUrl?: string;
   preferences?: {
@@ -54,21 +53,23 @@ export interface UserProfile {
     requireCovered?: boolean;
     requireEVCharging?: boolean;
   };
+  createdAt?: Timestamp | Date; // Date user profile was created in Firestore
+  updatedAt?: Timestamp | Date; // Date user profile was last updated
 }
 
 export interface PaymentMethod {
   id: string;
   type: 'card' | 'upi' | 'wallet';
-  details: string; // e.g., "Visa **** 1234" or "user@upi"
+  details: string; 
   isDefault: boolean;
-  expiryDate?: string; // For cards "MM/YY"
+  expiryDate?: string; 
 }
 
 export interface FavoriteLocation {
   id: string;
   name: string;
   address: string;
-  spaceId?: string; // If it's a specific space or facility
+  spaceId?: string; 
   notes?: string;
 }
 
@@ -92,7 +93,6 @@ export const featureLabels: Record<ParkingFeature, string> = {
   secure: 'Secure Parking',
 };
 
-// Icons for the new slot card display
 export const slotTypeIcons: Record<ParkingSpace['slotType'], LucideIcon> = {
     standard: require('lucide-react').CarFront,
     accessible: require('lucide-react').Accessibility,

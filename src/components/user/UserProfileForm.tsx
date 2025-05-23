@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -10,50 +11,69 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { toast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth"; // Import useAuth to get loading state
 import { UploadCloud } from "lucide-react";
+import { useEffect } from 'react';
 
 const profileSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
-  email: z.string().email(), // Email likely not editable, or needs special handling
+  email: z.string().email(), 
   phone: z.string().optional().refine(val => !val || /^[+]?[0-9]{10,15}$/.test(val), {
     message: "Invalid phone number format.",
   }),
-  avatarUrl: z.string().url().optional().or(z.literal("")),
-  defaultVehiclePlate: z.string().optional(),
+  avatarUrl: z.string().url({ message: "Please enter a valid URL for the avatar." }).optional().or(z.literal("")),
+  defaultVehiclePlate: z.string().optional().refine(val => !val || /^[A-Z0-9\s-]{3,10}$/i.test(val), { // Added vehicle plate validation
+    message: "Invalid vehicle plate format (3-10 alphanumeric chars, spaces, hyphens)."
+  }),
   requireCovered: z.boolean().optional(),
   requireEVCharging: z.boolean().optional(),
 });
 
-type ProfileFormValues = z.infer<typeof profileSchema>;
+export type ProfileFormValues = z.infer<typeof profileSchema>;
 
 interface UserProfileFormProps {
-  userProfile: UserProfileType;
-  onSubmit: (data: ProfileFormValues) => Promise<void>; // Simulate async submission
+  userProfile: UserProfileType; // This will now come from useAuth, already merged
+  onSubmit: (data: ProfileFormValues) => Promise<void>;
 }
 
 export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: UserProfileFormProps) {
+  const { loading: authLoading } = useAuth(); // Get auth loading state
+
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
-    defaultValues: {
+    // Default values will be set by useEffect to ensure form re-initializes if userProfile prop changes
+  });
+
+  useEffect(() => {
+    // Reset form with new userProfile data when it changes (e.g., after initial load)
+    form.reset({
       name: userProfile.name || "",
-      email: userProfile.email || "", // Display only, not editable typically
+      email: userProfile.email || "", 
       phone: userProfile.phone || "",
       avatarUrl: userProfile.avatarUrl || "",
       defaultVehiclePlate: userProfile.preferences?.defaultVehiclePlate || "",
       requireCovered: userProfile.preferences?.requireCovered || false,
       requireEVCharging: userProfile.preferences?.requireEVCharging || false,
-    },
-  });
+    });
+  }, [userProfile, form]);
+
 
   async function processSubmit(values: ProfileFormValues) {
-    try {
-      await handleFormSubmit(values);
-      toast({ title: "Profile Updated", description: "Your changes have been saved successfully." });
-    } catch (error) {
-      toast({ title: "Update Failed", description: "Could not save profile changes. Please try again.", variant: "destructive" });
-    }
+    // Prepare data for submission, potentially transforming if UserProfileType differs
+    const submitData = {
+        ...values, // includes name, email, phone, avatarUrl
+        preferences: {
+            defaultVehiclePlate: values.defaultVehiclePlate,
+            requireCovered: values.requireCovered,
+            requireEVCharging: values.requireEVCharging,
+        }
+    };
+    await handleFormSubmit(submitData);
   }
+  
+  const currentAvatar = form.watch("avatarUrl") || userProfile.avatarUrl;
+  const currentName = form.watch("name") || userProfile.name;
+
 
   return (
     <Form {...form}>
@@ -70,14 +90,14 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
               render={({ field }) => (
                 <FormItem className="flex flex-col items-center text-center">
                   <Avatar className="w-24 h-24 mb-2 ring-2 ring-primary ring-offset-2 ring-offset-background">
-                    <AvatarImage src={field.value || userProfile.avatarUrl} alt={userProfile.name} data-ai-hint="person portrait" />
-                    <AvatarFallback>{userProfile.name?.charAt(0).toUpperCase()}</AvatarFallback>
+                    <AvatarImage src={currentAvatar} alt={currentName} data-ai-hint="person portrait" />
+                    <AvatarFallback>{currentName?.charAt(0).toUpperCase() || 'U'}</AvatarFallback>
                   </Avatar>
-                  {/* Basic URL input for avatar. Real app would use file upload. */}
                   <FormControl>
                     <div className="flex items-center gap-2 w-full max-w-sm mx-auto">
                       <Input type="url" placeholder="Image URL for avatar" {...field} className="text-xs"/>
-                      <Button type="button" variant="outline" size="icon" className="shrink-0">
+                      <Button type="button" variant="outline" size="icon" className="shrink-0" 
+                        onClick={() => {/* Future: Open file dialog */ alert("File upload for avatar coming soon! For now, please use a URL.");}}>
                         <UploadCloud className="h-4 w-4"/>
                       </Button>
                     </div>
@@ -105,7 +125,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
                 <FormItem>
                   <FormLabel>Email Address</FormLabel>
                   <FormControl><Input placeholder="your@email.com" {...field} readOnly className="bg-muted/50 cursor-not-allowed" /></FormControl>
-                  <FormDescription>Email address cannot be changed here.</FormDescription>
+                  <FormDescription>Email address cannot be changed.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -149,7 +169,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
                 <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
                   <div className="space-y-0.5">
                     <FormLabel>Prefer Covered Parking?</FormLabel>
-                    <FormDescription>Prioritize covered spots in search results.</FormDescription>
+                    <FormDescription>Prioritize covered spots in search results if available.</FormDescription>
                   </div>
                   <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                 </FormItem>
@@ -162,7 +182,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
                 <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
                   <div className="space-y-0.5">
                     <FormLabel>Need EV Charging?</FormLabel>
-                    <FormDescription>Only show spots with EV charging facilities.</FormDescription>
+                    <FormDescription>Only show spots with EV charging facilities if available.</FormDescription>
                   </div>
                   <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                 </FormItem>
@@ -171,8 +191,8 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
           </CardContent>
         </Card>
 
-        <Button type="submit" disabled={form.formState.isSubmitting} className="w-full md:w-auto">
-          {form.formState.isSubmitting ? "Saving Changes..." : "Save Changes"}
+        <Button type="submit" disabled={authLoading || form.formState.isSubmitting} className="w-full md:w-auto">
+          {authLoading || form.formState.isSubmitting ? "Saving Changes..." : "Save Changes"}
         </Button>
       </form>
     </Form>

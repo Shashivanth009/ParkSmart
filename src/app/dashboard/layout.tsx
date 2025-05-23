@@ -1,21 +1,24 @@
+
 "use client";
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation'; // Import usePathname
 import { useAuth } from '@/hooks/useAuth';
 import { SidebarNav } from '@/components/core/SidebarNav';
-import { Header } from '@/components/core/Header'; // Using the main header for consistency
+import { Header } from '@/components/core/Header'; 
 import { Loader2 } from 'lucide-react';
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
-  const { isAuthenticated, loading, user } = useAuth();
+  const { isAuthenticated, loading } = useAuth(); // Removed user as it's not directly used here
   const router = useRouter();
+  const pathname = usePathname(); // Get current path
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
-      router.push('/login');
+      // Pass current path as redirect query param
+      router.push(`/login?redirect=${encodeURIComponent(pathname)}`);
     }
-  }, [isAuthenticated, loading, router]);
+  }, [isAuthenticated, loading, router, pathname]);
 
   if (loading) {
     return (
@@ -26,8 +29,14 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   }
 
   if (!isAuthenticated) {
-    // This case should ideally be handled by the redirect, but serves as a fallback.
-    return null; 
+    // This case should ideally be handled by the redirect, 
+    // but serves as a fallback or if component renders before redirect completes.
+    // Returning null or a minimal loader avoids rendering dashboard content.
+    return (
+         <div className="flex h-screen items-center justify-center bg-background">
+            <p>Redirecting to login...</p>
+        </div>
+    );
   }
 
   return (
@@ -35,15 +44,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
        <Header /> {/* Main app header */}
       <div className="flex flex-1">
         <aside className="hidden md:block w-64 fixed top-16 left-0 h-[calc(100vh-4rem)] z-30">
-           {/* Adjust top to account for header height */}
           <SidebarNav />
         </aside>
         <main className="flex-1 md:ml-64 mt-16 p-4 md:p-8 bg-background">
-          {/* Adjust mt for header, ml for sidebar */}
           {children}
         </main>
       </div>
-      {/* Mobile navigation can be added here using a Sheet component if needed */}
     </div>
   );
 }
