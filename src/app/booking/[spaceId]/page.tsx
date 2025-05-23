@@ -12,7 +12,7 @@ import Image from 'next/image';
 import { MapPin, DollarSign, Users, Star, ShieldCheck, Zap, Car, Loader2 } from 'lucide-react';
 import { featureIcons, featureLabels } from '@/types';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button'; 
+import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
 
@@ -29,13 +29,8 @@ const fetchSpaceDetails = async (spaceId: string): Promise<ParkingSpace | null> 
   return mockSpaces.find(s => s.id === spaceId) || null;
 };
 
-// Required for static export of dynamic routes
-export async function generateStaticParams() {
-  // We don't want to pre-render any specific booking pages at build time
-  // for a fully static export of this dynamic route.
-  // The page will fetch data client-side based on the spaceId from the URL.
-  return [];
-}
+// generateStaticParams removed as it cannot co-exist with "use client" in the same file for output: 'export'
+// The page will be client-side rendered for its dynamic content.
 
 const FeatureDisplay = ({ feature }: { feature: ParkingFeature }) => {
   const Icon = featureIcons[feature] || Car;
