@@ -10,9 +10,12 @@ import Link from 'next/link';
 
 declare global {
   interface Window {
-    google?: typeof google; // GoMaps Pro is Google Maps compatible
+    mappls?: any; // Mappls SDK global object
+    L?: any; // Leaflet if Mappls uses it under the hood
+    // For GoMaps Pro (Google Maps compatible)
+    google?: typeof google;
     initMapComponentGlobal?: () => void;
-    gm_authFailure?: () => void;
+    gm_authFailure?: () => void; // Google Maps specific auth failure callback
   }
 }
 
@@ -31,7 +34,7 @@ interface MapComponentProps {
   center?: { lat: number; lng: number } | null;
   showSearchInput?: boolean;
   showMyLocationButton?: boolean;
-  onPlaceSelected?: (place: google.maps.places.PlaceResult) => void;
+  onPlaceSelected?: (place: google.maps.places.PlaceResult) => void; // For Google Places Autocomplete
   onMapIdle?: (center: { lat: number; lng: number }, zoom: number) => void;
 }
 
@@ -45,14 +48,14 @@ const MapComponent: React.FC<MapComponentProps> = ({
   interactive = true,
   onMarkerClick,
   zoom = DEFAULT_MAP_ZOOM,
-  center = { lat: 17.3850, lng: 78.4867 }, 
+  center = { lat: 17.3850, lng: 78.4867 }, // Default to Hyderabad
   showSearchInput = false,
   showMyLocationButton = false,
   onPlaceSelected,
   onMapIdle,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null); // For Google Maps compatible
   const activeMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   
@@ -66,18 +69,14 @@ const MapComponent: React.FC<MapComponentProps> = ({
 
   const loadGoMapsProScript = useCallback((apiKey: string) => {
     return new Promise<void>((resolve, reject) => {
-      // Check if Google Maps (or compatible API) is already loaded
       if (window.google?.maps?.places && window.google?.maps?.marker) {
-        console.log("MapComponent: GoMaps Pro compatible API already available.");
+        console.log("MapComponent: GoMaps Pro compatible API (Google Maps) already available.");
         resolve();
         return;
       }
 
-      // Check if script is already added
       const existingScript = document.getElementById('gomaps-pro-sdk');
       if (existingScript) {
-        console.log("MapComponent: GoMaps Pro SDK script tag already exists. Waiting for it to load if necessary.");
-        // If script exists, wait for it to load or resolve if already loaded
         let checks = 0;
         const interval = setInterval(() => {
           checks++;
@@ -86,42 +85,38 @@ const MapComponent: React.FC<MapComponentProps> = ({
             resolve();
           } else if (checks > 20) { // ~2 seconds timeout
             clearInterval(interval);
-            console.warn("MapComponent: Existing GoMaps Pro script did not load in time.");
-            // Resolve anyway and let the map init logic handle it, or reject if preferred
+            console.warn("MapComponent: Existing GoMaps Pro script did not load in time. Will attempt to proceed.");
             resolve(); 
           }
         }, 100);
         return;
       }
-
-      console.log("MapComponent: Attempting to load GoMaps Pro SDK script.");
+      
+      console.log("MapComponent: Attempting to load GoMaps Pro SDK script with key:", apiKey ? "Present" : "MISSING!");
       const script = document.createElement('script');
       script.id = 'gomaps-pro-sdk';
-      // Ensure "marker" and "places" libraries are requested
       script.src = `https://maps.gomaps.pro/maps/api/js?key=${apiKey}&libraries=marker,places&loading=async&callback=initMapComponentGlobal`;
       script.async = true;
       script.defer = true;
 
-      // This global callback is important for the script to signal readiness
-      (window as any).initMapComponentGlobalCallbackSet = true; 
+      (window as any).initMapComponentGlobalCallbackSet = true;
       window.initMapComponentGlobal = () => {
         console.log("MapComponent: initMapComponentGlobal called, GoMaps Pro SDK ready.");
-        delete window.initMapComponentGlobal; // Clean up
+        delete window.initMapComponentGlobal;
         delete (window as any).initMapComponentGlobalCallbackSet;
         resolve();
       };
       
       script.onerror = (event) => {
-        let errorMsg = "MapComponent: GoMaps Pro SDK script failed to load.";
-        if (event && typeof event === 'object' && 'type' in event) {
-            errorMsg += ` Event type: ${event.type}.`;
-        }
-        // Check browser's Network tab for more specific HTTP errors on the script request.
+        let errorMsg = `MapComponent: GoMaps Pro SDK script failed to load. Check browser's Network tab for specific HTTP errors (e.g., 403, 404, CORS). Event type: ${event instanceof Event ? event.type : 'unknown'}.`;
+        // Log more details if available in the event object, though 'error' events for scripts are often not very descriptive.
         console.error(errorMsg, event instanceof Event ? { type: event.type, target: event.target } : event);
         if ((window as any).initMapComponentGlobalCallbackSet) {
           delete window.initMapComponentGlobal;
           delete (window as any).initMapComponentGlobalCallbackSet;
         }
+        setApiKeyMissingOrScriptsFailed(true); // Ensure UI updates
+        setIsMapLoading(false);               // Stop loader
         reject(new Error("Failed to load GoMaps Pro SDK script."));
       };
       document.head.appendChild(script);
@@ -138,10 +133,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
     }
     setApiKeyMissingOrScriptsFailed(false); 
 
-    // This callback handles Google Maps specific auth failures (like OverQuotaMapError)
-    // if GoMaps Pro uses Google services under the hood or if the key is a Google key.
     window.gm_authFailure = () => {
-      console.error("MapComponent: Detected gm_authFailure. This often indicates an API key issue (billing, quota, invalid key, or API not enabled). For Google Maps, check Google Cloud Console. For GoMaps Pro, check their dashboard or if it proxies Google errors.");
+      console.error("MapComponent: Detected gm_authFailure. This indicates an API key issue (billing, quota, invalid key, or API not enabled). For Google Maps, check Google Cloud Console. For GoMaps Pro, check their dashboard or if it proxies Google errors.");
       setApiKeyMissingOrScriptsFailed(true);
       setIsMapLoading(false);
     };
@@ -150,29 +143,27 @@ const MapComponent: React.FC<MapComponentProps> = ({
       .then(() => {
         console.log("MapComponent: GoMaps Pro script loaded successfully state flag set.");
         setScriptsLoaded(true);
-        setApiKeyMissingOrScriptsFailed(false); // Ensure this is false if script loads
+        setApiKeyMissingOrScriptsFailed(false);
       })
       .catch((error) => {
         console.error("MapComponent: Critical failure loading GoMaps Pro resources.", error);
-        setApiKeyMissingOrScriptsFailed(true);
+        // setApiKeyMissingOrScriptsFailed is likely already true from loadGoMapsProScript's reject
+        if (!apiKeyMissingOrScriptsFailed) setApiKeyMissingOrScriptsFailed(true);
         setIsMapLoading(false);
         setScriptsLoaded(false); 
       });
     
-    // Cleanup function for when the component unmounts
     return () => {
         delete window.gm_authFailure;
-        // If the callback was set but component unmounts before it's called
         if ((window as any).initMapComponentGlobalCallbackSet) {
             console.log("MapComponent: Cleaning up initMapComponentGlobal due to unmount.");
             delete window.initMapComponentGlobal;
             delete (window as any).initMapComponentGlobalCallbackSet;
         }
     }
-  }, [loadGoMapsProScript]); // loadGoMapsProScript is memoized, GOMAPS_PRO_API_KEY is constant after init
+  }, [loadGoMapsProScript, apiKeyMissingOrScriptsFailed]); // Added apiKeyMissingOrScriptsFailed to dependencies
 
 
-  // Effect for map instance initialization
   useEffect(() => {
     if (apiKeyMissingOrScriptsFailed || !scriptsLoaded || !mapContainerRef.current || !window.google?.maps?.Map || !center) {
       if (isMapLoading && (apiKeyMissingOrScriptsFailed || (scriptsLoaded && (!window.google?.maps?.Map || !center)))) {
@@ -183,7 +174,6 @@ const MapComponent: React.FC<MapComponentProps> = ({
     
     const mapAlreadyInitialized = !!mapInstanceRef.current;
 
-    // If map is already there, just update center/zoom if props change
     if (mapAlreadyInitialized && mapInstanceRef.current) {
       const currentMapCenter = mapInstanceRef.current.getCenter();
       const currentZoom = mapInstanceRef.current.getZoom();
@@ -198,38 +188,32 @@ const MapComponent: React.FC<MapComponentProps> = ({
           mapInstanceRef.current.setZoom(zoom);
           zoomChanged = true;
       }
-      // If map was already initialized and no significant prop changes, ensure loading is false.
       if (isMapLoading && !centerChanged && !zoomChanged) setIsMapLoading(false); 
       return;
     }
     
-    // If map instance doesn't exist, and we are not already trying to load, start loading.
-    if (mapAlreadyInitialized) return; // Should not happen if mapInstanceRef.current is null
+    if (mapAlreadyInitialized) return;
 
-    // Start loading map instance
     if (!isMapLoading) setIsMapLoading(true); 
-    setMapLoadTimedOut(false); // Reset timeout flag for new attempt
+    setMapLoadTimedOut(false);
 
-    // Timeout for map initialization
     const loadTimeoutTimer = setTimeout(() => {
       if (isMapLoading && (!mapInstanceRef.current || !mapInstanceRef.current.getCenter()) ) {
-        // Map didn't fully initialize (e.g. getCenter() is not available)
         console.error("MapComponent: Map did not fully initialize within timeout period (20s). Tiles might not have loaded or map service unavailable.");
-        if (isMapLoading) setIsMapLoading(false); // Stop loading spinner
-        setMapLoadTimedOut(true); // Show timeout message
+        if (isMapLoading) setIsMapLoading(false);
+        setMapLoadTimedOut(true);
       } else if (isMapLoading && mapInstanceRef.current?.getCenter()) {
-        // Map seems initialized but loader might still be on.
         if (isMapLoading) setIsMapLoading(false);
         setMapLoadTimedOut(false);
       }
-    }, 20000); // 20 seconds timeout
+    }, 20000); 
 
     try {
       console.log("MapComponent: Creating new Map instance with center:", center, "zoom:", zoom);
       const map = new window.google.maps.Map(mapContainerRef.current, {
         center: center,
         zoom: zoom,
-        mapId: "GOMAPS_PRO_MAP_ID", // GoMaps Pro often uses a generic ID or allows specific ones.
+        mapId: "GOMAPS_PRO_MAP_ID_OR_GOOGLE_MAP_ID", 
         disableDefaultUI: !interactive,
         zoomControl: interactive,
         streetViewControl: interactive,
@@ -244,58 +228,49 @@ const MapComponent: React.FC<MapComponentProps> = ({
       let idleListener: google.maps.MapsEventListener | null = null;
       let tilesLoadedListener: google.maps.MapsEventListener | null = null;
 
-      // Cleanup function for listeners
       const cleanupListeners = () => {
         if (idleListener && window.google?.maps?.event) google.maps.event.removeListener(idleListener);
         if (tilesLoadedListener && window.google?.maps?.event) google.maps.event.removeListener(tilesLoadedListener);
       };
       
-      // Function to call when map is considered ready
       const onMapActuallyReady = () => {
         console.log("MapComponent: Map considered ready (idle or tilesloaded).");
-        clearTimeout(loadTimeoutTimer); // Clear the initialization timeout
-        if (isMapLoading) { // Only update if it's still in loading state
+        clearTimeout(loadTimeoutTimer); 
+        if (isMapLoading) {
             setIsMapLoading(false);
         }
-        setMapLoadTimedOut(false); // Reset timeout error state
+        setMapLoadTimedOut(false);
       };
 
-      // Listen for 'idle' (map has finished panning/zooming)
       idleListener = map.addListener('idle', () => {
         onMapActuallyReady();
-        if (interactive && onMapIdle) {
-          const currentCenter = map.getCenter();
-          const currentZoom = map.getZoom();
+        if (interactive && onMapIdle && mapInstanceRef.current) { // Ensure mapInstanceRef.current exists
+          const currentCenter = mapInstanceRef.current.getCenter();
+          const currentZoom = mapInstanceRef.current.getZoom();
           if (currentCenter && currentZoom !== undefined) {
             onMapIdle({ lat: currentCenter.lat(), lng: currentCenter.lng() }, currentZoom);
           }
         }
       });
-      // Listen for 'tilesloaded' (all visible map tiles have loaded)
       tilesLoadedListener = map.addListener('tilesloaded', onMapActuallyReady);
       
-      // Fallback: if the map has a center very quickly, assume it's basically ready
       if (map.getCenter() && isMapLoading) {
-          // Wait a very short moment for initial tile render attempt
           setTimeout(onMapActuallyReady, 750); 
-      } else if (map.getCenter() && !isMapLoading) { // Already loaded, clear timeout
+      } else if (map.getCenter() && !isMapLoading) { 
           clearTimeout(loadTimeoutTimer);
           setMapLoadTimedOut(false);
       }
 
-
-      // Setup Autocomplete for internal search input if enabled
       if (showSearchInput && internalSearchInputRef.current && window.google.maps.places) {
         console.log("MapComponent: Setting up Autocomplete for internal search input.");
         internalAutocompleteRef.current = new window.google.maps.places.Autocomplete(internalSearchInputRef.current, {
-          types: ['geocode'], // Restrict to geocoding results (addresses, cities, etc.)
+          types: ['geocode'],
         });
-        internalAutocompleteRef.current.bindTo('bounds', map); // Bias suggestions to map viewport
+        internalAutocompleteRef.current.bindTo('bounds', map); 
         internalAutocompleteRef.current.addListener('place_changed', () => {
           const place = internalAutocompleteRef.current?.getPlace();
           if (place?.geometry?.location) {
             console.log("MapComponent: Place selected from internal autocomplete:", place.name);
-            // Parent component handles map centering/zooming via onPlaceSelected
             if (onPlaceSelected) {
               onPlaceSelected(place);
             }
@@ -303,34 +278,27 @@ const MapComponent: React.FC<MapComponentProps> = ({
         });
       }
       
-      // Cleanup for this effect
       return () => {
         console.log("MapComponent: Cleaning up map instance and listeners.");
         cleanupListeners();
         clearTimeout(loadTimeoutTimer);
         if (mapInstanceRef.current && window.google?.maps?.event) {
-           // Clear all listeners on map instance. Important for preventing memory leaks.
            google.maps.event.clearInstanceListeners(mapInstanceRef.current);
         }
-        // Also clear listeners from autocomplete instance if it exists
         if (internalAutocompleteRef.current && window.google?.maps?.event) {
             google.maps.event.clearInstanceListeners(internalAutocompleteRef.current);
         }
-        // mapInstanceRef.current = null; // Potentially, if full re-init is desired on prop changes.
-                                       // For now, we update existing map.
       };
 
     } catch (error) {
       clearTimeout(loadTimeoutTimer);
       console.error("MapComponent: Exception caught during GoMaps Pro Map instance initialization:", error);
       if (isMapLoading) setIsMapLoading(false);
-      setMapLoadTimedOut(true); // Indicate map failed to load properly
+      setMapLoadTimedOut(true);
     }
-  // Dependencies for map instance creation. Center/zoom are handled by a separate effect if map already exists.
-  }, [scriptsLoaded, apiKeyMissingOrScriptsFailed, interactive, showSearchInput, onPlaceSelected, onMapIdle, center, zoom]); // Added center and zoom as they are part of initial map options
+  }, [scriptsLoaded, apiKeyMissingOrScriptsFailed, interactive, showSearchInput, onPlaceSelected, onMapIdle, center, zoom, isMapLoading]);
 
 
-  // Effect for updating map center/zoom when props change AFTER map is initialized
   useEffect(() => {
     if (mapInstanceRef.current && center) {
         const currentMapCenter = mapInstanceRef.current.getCenter();
@@ -342,22 +310,19 @@ const MapComponent: React.FC<MapComponentProps> = ({
              mapInstanceRef.current.setZoom(zoom);
         }
     }
-  }, [center, zoom]); // Only re-run if center or zoom props change
+  }, [center, zoom]); 
 
 
-  // Effect for updating markers
   useEffect(() => {
     if (apiKeyMissingOrScriptsFailed || !scriptsLoaded || !mapInstanceRef.current || !window.google?.maps?.marker || isMapLoading || mapLoadTimedOut) {
-      // Don't try to update markers if map isn't fully ready or there's an API/script issue
       return;
     }
 
     const map = mapInstanceRef.current;
     const infoWindow = infoWindowRef.current;
 
-    // Clear existing markers from map
-    activeMarkersRef.current.forEach(marker => marker.map = null); // Required for AdvancedMarkerElement
-    activeMarkersRef.current = []; // Reset the array
+    activeMarkersRef.current.forEach(marker => marker.map = null);
+    activeMarkersRef.current = [];
 
     markers.forEach(markerData => {
       try {
@@ -365,12 +330,10 @@ const MapComponent: React.FC<MapComponentProps> = ({
           position: { lat: markerData.lat, lng: markerData.lng },
           map: map,
           title: markerData.label,
-          // content: customMarkerElement, // Can use custom HTML for marker appearance
         });
 
         advancedMarker.addListener('click', () => {
           if (infoWindow) {
-            // Basic InfoWindow content. Can be customized with HTML.
             infoWindow.setContent(`<div style="padding: 8px; font-size: 14px; color: #333;"><strong>${markerData.label}</strong><br><a href="/booking/${markerData.id}" style="color: hsl(var(--primary)); text-decoration: none;">Book Now</a></div>`);
             infoWindow.open(map, advancedMarker);
           }
@@ -380,34 +343,28 @@ const MapComponent: React.FC<MapComponentProps> = ({
         });
         activeMarkersRef.current.push(advancedMarker);
       } catch (e) {
-        console.error("MapComponent: Error creating AdvancedMarkerElement for GoMaps Pro:", e, markerData);
+        console.error("MapComponent: Error creating AdvancedMarkerElement:", e, markerData);
       }
     });
     
-    // Auto-fit map to markers only if 'center' prop is not explicitly provided and map is interactive
-    // And if there are markers to fit to
     if (markers.length > 0 && interactive && window.google?.maps?.LatLngBounds && !center && activeMarkersRef.current.length > 0) {
       const bounds = new window.google.maps.LatLngBounds();
       activeMarkersRef.current.forEach(m => {
-        if(m.position) bounds.extend(m.position as google.maps.LatLngLiteral); // Cast to LatLngLiteral if needed
+        if(m.position) bounds.extend(m.position as google.maps.LatLngLiteral);
       });
       if (!bounds.isEmpty()) {
-        map.fitBounds(bounds, 100); // 100px padding
+        map.fitBounds(bounds, 100);
       }
     } else if (center) {
-      // If center is provided, respect it. This allows parent to control map view.
       map.setCenter(center);
       map.setZoom(zoom);
     }
-
-  // Marker update dependencies. `center` removed to prevent re-rendering markers if only center changes.
-  // Parent should manage `markers` array if it wants markers to change based on `center`.
-  }, [markers, scriptsLoaded, apiKeyMissingOrScriptsFailed, onMarkerClick, interactive, zoom, isMapLoading, mapLoadTimedOut]);
+  }, [markers, scriptsLoaded, apiKeyMissingOrScriptsFailed, onMarkerClick, interactive, zoom, isMapLoading, mapLoadTimedOut, center]); // Added center to re-evaluate markers if center prop changes with no auto-fit
 
 
   const handleMyLocation = () => {
     if (navigator.geolocation && mapInstanceRef.current) {
-      setIsMapLoading(true); // Show loader while getting location
+      setIsMapLoading(true);
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const userLocation = {
@@ -416,22 +373,20 @@ const MapComponent: React.FC<MapComponentProps> = ({
           };
           const currentMap = mapInstanceRef.current;
           if (currentMap) {
-            // Map centering/zooming will trigger 'idle' event, which then calls onMapIdle
-            // allowing parent component to update its state (like activeSearchCenter).
             currentMap.setCenter(userLocation);
-            currentMap.setZoom(FOCUSED_MAP_ZOOM); // Zoom in on user's location
+            currentMap.setZoom(FOCUSED_MAP_ZOOM);
           }
-          setIsMapLoading(false); // Hide loader
+          setIsMapLoading(false);
         },
         (error) => {
           console.error("Error getting user location:", error);
-          alert("Could not get your location. Please ensure location services are enabled in your browser and for this site.");
-          setIsMapLoading(false); // Hide loader
+          alert("Could not get your location. Please ensure location services are enabled.");
+          setIsMapLoading(false);
         },
-        { timeout: 10000 } // Add timeout for geolocation
+        { timeout: 10000 }
       );
     } else {
-      alert("Geolocation is not supported by this browser or map not ready.");
+      alert("Geolocation is not supported or map not ready.");
     }
   };
 
@@ -442,21 +397,19 @@ const MapComponent: React.FC<MapComponentProps> = ({
           <AlertTriangle className="w-12 h-12 text-destructive mx-auto mb-3" />
           <h3 className="text-lg font-semibold text-destructive">Map Configuration or Loading Error</h3>
           <p className="text-sm text-muted-foreground mt-1">
-            The GoMaps Pro API key (<code>NEXT_PUBLIC_GOMAPS_PRO_API_KEY</code>) might be missing, incorrectly configured in your <code>.env.local</code> file,
-            or the map scripts could not be loaded from GoMaps Pro servers. This can happen due to network issues, an invalid API key, incorrect API key permissions (check GoMaps Pro dashboard),
-            or if GoMaps Pro relies on Google services, issues on the Google Cloud Console (like 'OverQuotaMapError', billing, API enablement).
+            The GoMaps Pro API key (<code>NEXT_PUBLIC_GOMAPS_PRO_API_KEY</code>) might be missing or incorrectly configured in your <code>.env.local</code> file.
+            Alternatively, the map scripts/styles could not be loaded from GoMaps Pro servers. This can happen due to network issues, an invalid API key, or incorrect API key permissions
+            on the GoMaps Pro dashboard (e.g., domain not whitelisted). If you see Google-specific errors in the console (like 'OverQuotaMapError'),
+            check your Google Cloud Console for API key billing/quota issues, as GoMaps Pro might use Google services.
           </p>
           <div className="mt-3 text-xs text-muted-foreground text-left bg-background/50 p-3 rounded-md border space-y-2">
             <p className="font-semibold mb-1">Troubleshooting Steps:</p>
             <ol className="list-decimal list-inside space-y-1">
               <li><strong>Environment Variable File:</strong> Ensure a file named <code className="bg-card p-0.5 rounded">.env.local</code> exists in your project's **absolute root directory**.</li>
-              <li><strong>API Key Value:</strong> Inside <code className="bg-card p-0.5 rounded">.env.local</code>, confirm the line: <code className="bg-card p-0.5 rounded">NEXT_PUBLIC_GOMAPS_PRO_API_KEY=YOUR_API_KEY_HERE</code> (replace with your actual key).</li>
+              <li><strong>API Key Value:</strong> Inside <code className="bg-card p-0.5 rounded">.env.local</code>, confirm the line: <code className="bg-card p-0.5 rounded">NEXT_PUBLIC_GOMAPS_PRO_API_KEY=YOUR_API_KEY_HERE</code> (replace with your actual key, e.g., AlzaSyxap6A_EcHW72khGw8I6awbRRUcv8sYmbG).</li>
               <li><strong>Restart Server:</strong> **CRITICAL STEP:** After creating or modifying <code className="bg-card p-0.5 rounded">.env.local</code>, you **MUST** restart your Next.js development server.</li>
-              <li><strong>API Provider Dashboard:</strong> 
-                For GoMaps Pro, verify your key's status and permissions. If you suspect it uses Google services, check your Google Cloud Console (ensure Maps JavaScript API & Places API are enabled, billing is active, and quotas are fine).
-                Also, check if your current domain (e.g., localhost or your deployment URL) needs to be **whitelisted** for the key.
-              </li>
-              <li><strong>Network & Browser Console:</strong> Check your internet connection and look for more specific errors in your browser's Network tab or Console (F12 Developer Tools). Try accessing the script/CSS URLs (shown in console errors) directly in your browser.</li>
+              <li><strong>API Provider Dashboard:</strong> For GoMaps Pro, verify your key's status, permissions, and **domain whitelisting**. If using a Google key or if GoMaps Pro proxies Google, check Google Cloud Console (Maps JavaScript API & Places API enabled, billing active, quotas fine, domain whitelisted).</li>
+              <li><strong>Network & Browser Console:</strong> Check your internet connection. Look for specific HTTP errors in your browser's Network tab (F12 Developer Tools) for requests to <code className="bg-card p-0.5 rounded">maps.gomaps.pro</code>.</li>
             </ol>
             <p className="mt-2">For details on Next.js environment variables, see the <Link href="https://nextjs.org/docs/app/building-your-application/configuring/environment-variables" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Next.js Documentation</Link>.</p>
           </div>
@@ -476,8 +429,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
               ref={internalSearchInputRef}
               type="text"
               placeholder="Search map location..."
-              className="w-full pl-10 pr-3 py-2 shadow-lg rounded-md border-gray-300 focus:border-primary focus:ring-primary"
-              disabled={!interactive || isMapLoading} // Disable if map not interactive or still loading
+              className="w-full pl-10 pr-3 py-2 shadow-lg rounded-md border-input focus:border-primary focus:ring-primary"
+              disabled={!interactive || isMapLoading}
             />
           </div>
         </div>
@@ -489,7 +442,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
             onClick={handleMyLocation}
             className="absolute bottom-4 right-4 z-10 bg-background shadow-lg"
             title="My Location"
-            disabled={isMapLoading} // Disable if map is loading
+            disabled={isMapLoading}
         >
             <LocateFixed className="h-5 w-5" />
         </Button>
@@ -504,7 +457,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
         <div className="absolute inset-0 bg-background/90 flex flex-col items-center justify-center z-10 p-4 text-center">
           <AlertTriangle className="w-10 h-10 text-destructive mb-2" />
           <p className="text-md font-semibold text-destructive">Map Timed Out or Failed to Load</p>
-          <p className="text-sm text-muted-foreground">The map took too long to load or encountered an error. Please check your internet connection or try again later. If you see Google-specific errors in console (like 'OverQuotaMapError'), check your Google Cloud Console for API key billing/quota issues.</p>
+          <p className="text-sm text-muted-foreground">The map took too long to load or encountered an error. Please check your internet connection or try again later. For GoMaps Pro, also verify your API key status, domain whitelisting and service entitlements on their dashboard. If you see Google-specific errors in console (like 'OverQuotaMapError'), check your Google Cloud Console for API key billing/quota issues.</p>
         </div>
       )}
     </Card>
