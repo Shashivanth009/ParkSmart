@@ -24,23 +24,31 @@ let firebaseInitializationError: Error | null = null;
 
 try {
   if (getApps().length === 0) {
+    console.log("Firebase: Initializing new app with config:", JSON.parse(JSON.stringify(firebaseConfig))); // Log config without exposing functions
     app = initializeApp(firebaseConfig);
   } else {
     app = getApps()[0];
+    console.log("Firebase: Using existing app.");
   }
   
   if (app) {
+    console.log("Firebase: App object options:", JSON.parse(JSON.stringify(app.options))); // Log app.options
     auth = getAuth(app);
     db = getFirestore(app);
     firebaseInitialized = true;
+    console.log("Firebase: Initialization successful. Auth and DB objects created.");
   } else {
-    throw new Error("Firebase app object is null after initialization attempt.");
+    firebaseInitializationError = new Error("Firebase app object is null after initialization attempt.");
+    console.error("Firebase: Firebase app object is null after initialization attempt.");
+    // firebaseInitialized remains false
   }
 
 } catch (error) {
-  console.error("Firebase initialization failed:", error);
+  console.error("Firebase: Initialization failed:", error);
   firebaseInitializationError = error instanceof Error ? error : new Error(String(error));
   // app, auth, db will remain null
+  // firebaseInitialized remains false
 }
 
 export { app, auth, db, firebaseInitialized, firebaseInitializationError };
+
