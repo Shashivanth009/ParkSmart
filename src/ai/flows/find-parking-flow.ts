@@ -31,7 +31,7 @@ const ParkingSlotSchema = z.object({
   pricePerHour: z.number().optional().describe("Price per hour for this type of slot in this facility (e.g., USD). Ensure it's a positive number, ideally between 1.0 and 10.0."),
   
   imageUrl: z.string().optional().describe("A placeholder image URL for the FACILITY, must be 'https://placehold.co/600x400.png'."),
-  dataAiHint: z.string().optional().describe("A two-word hint for the placeholder FACILITY image, e.g., 'restaurant parking', 'park entrance', 'hotel garage', 'mall exterior', 'street meters', 'office building'."),
+  dataAiHint: z.string().optional().describe("A two-word hint for the placeholder FACILITY image, e.g., 'restaurant parking', 'park entrance', 'hotel garage', 'mall exterior', 'street meters', 'office building'. Should be varied and reflect facility type/context."),
   facilityRating: z.number().optional().describe("An overall user rating for the facility, a number between 1 and 5 (e.g., 4.2)."),
 
   availability: z.enum(['high', 'medium', 'low', 'full']).optional().describe("Overall availability in the FACILITY (less critical for individual slot status)."),
@@ -43,7 +43,7 @@ const ParkingSlotSchema = z.object({
 
 const FindParkingInputSchema = z.object({
   locationName: z.string().describe('The name of the location or area to search for parking, e.g., "Downtown Hyderabad" or "Near Charminar".'),
-  searchRadiusKm: z.number().positive().describe('The search radius in kilometers around the locationName.'),
+  searchRadiusKm: z.number().describe('The search radius in kilometers around the locationName.'),
   desiredFeatures: z.array(z.enum(['covered', 'ev-charging', 'cctv', 'disabled-access', 'well-lit', 'secure'])).optional().describe('A list of desired general facility features for the parking spots.'),
 });
 export type FindParkingInput = z.infer<typeof FindParkingInputSchema>;
@@ -104,7 +104,7 @@ const findParkingGenkitFlow = ai.defineFlow(
             slotLabel: `F${i+1}`,
             floorLevel: 'Ground',
             isOccupied: i % 2 === 0,
-            slotType: 'standard',
+            slotType: 'standard' as 'standard' | 'accessible' | 'ev-charging',
             facilityName: 'Fallback Facility',
             facilityAddress: input.locationName || 'Unknown Location',
             facilityCoordinates: { lat: 17.3850, lng: 78.4867 }, // Default to a known location
@@ -150,4 +150,3 @@ export async function findParkingSpots(input: FindParkingInput): Promise<Parking
   const result = await findParkingGenkitFlow(input);
   return result.parkingSlots;
 }
-
