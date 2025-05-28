@@ -57,9 +57,8 @@ export function BookingForm({ space, onSubmit, defaultVehiclePlate }: BookingFor
     },
   });
   
-  // Watch for changes in defaultVehiclePlate prop
   useEffect(() => {
-    if (defaultVehiclePlate) {
+    if (defaultVehiclePlate && defaultVehiclePlate !== form.getValues('vehiclePlate')) {
       form.setValue('vehiclePlate', defaultVehiclePlate);
     }
   }, [defaultVehiclePlate, form]);
@@ -92,7 +91,7 @@ export function BookingForm({ space, onSubmit, defaultVehiclePlate }: BookingFor
   }, [selectedDate, selectedStartTime, selectedDuration, space.pricePerHour, form]);
 
   function processSubmit(values: BookingFormValues) {
-    if (calculatedEndTime && space.pricePerHour !== undefined) { // Check pricePerHour too
+    if (calculatedEndTime && space.pricePerHour !== undefined) { 
       onSubmit(values, totalCost, calculatedEndTime);
     } else {
       form.setError("duration", {type: "manual", message: "Invalid booking time, duration, or price missing."});
@@ -203,7 +202,7 @@ export function BookingForm({ space, onSubmit, defaultVehiclePlate }: BookingFor
                 <FormControl>
                     <div className="relative">
                         <Car className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground icon-glow" />
-                        <Input placeholder="e.g., ABC 123" {...field} className="pl-9"/>
+                        <Input placeholder="e.g., ABC 123" {...field} value={field.value ?? ""} className="pl-9"/>
                     </div>
                 </FormControl>
                 <FormMessage />

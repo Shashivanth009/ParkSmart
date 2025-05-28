@@ -1,7 +1,7 @@
 
 "use client";
 import { useEffect, useState } from 'react';
-import { useParams, useRouter, usePathname } from 'next/navigation'; // Added usePathname
+import { useParams, useRouter, usePathname } from 'next/navigation';
 import { Header } from '@/components/core/Header';
 import { Footer } from '@/components/core/Footer';
 import { PageTitle } from '@/components/core/PageTitle';
@@ -9,28 +9,22 @@ import { BookingForm } from '@/components/booking/BookingForm';
 import type { ParkingSpace, ParkingFeature } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Image from 'next/image';
-import { MapPin, DollarSign, Users, Star, ShieldCheck, Zap, Car, Loader2 } from 'lucide-react';
+import { MapPin, DollarSign, Users, Star, Car, Loader2 } from 'lucide-react';
 import { featureIcons, featureLabels } from '@/types';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
 
-// Mock data - replace with actual API call
 const fetchSpaceDetails = async (spaceId: string): Promise<ParkingSpace | null> => {
   console.log("Fetching details for space:", spaceId);
   await new Promise(resolve => setTimeout(resolve, 1000));
-  // This mock data needs to align with the new ParkingSpace structure (facility vs slot)
-  // For simplicity, I'll assume these are facilities for now.
-  const mockSpaces: ParkingSpace[] = [ // Ensure these conform to updated ParkingSpace
+  
+  const mockSpaces: ParkingSpace[] = [
     { id: 'ps1', facilityName: 'City Center Parking', facilityAddress: '123 Main St, Anytown', availability: 'high', pricePerHour: 2.5, features: ['covered', 'ev-charging', 'cctv'], facilityCoordinates: { lat: 28.6139, lng: 77.2090 }, facilityRating: 4.5, availableSpots: 50, totalSpots: 100, imageUrl: 'https://placehold.co/800x450.png', slotLabel: 'N/A', floorLevel: 'N/A', isOccupied: false, slotType: 'standard', dataAiHint: "parking garage entrance"},
     { id: 'ps2', facilityName: 'Downtown Garage', facilityAddress: '456 Oak Ave, Anytown', availability: 'medium', pricePerHour: 3.0, features: ['cctv', 'secure'], facilityCoordinates: { lat: 28.6150, lng: 77.2100 }, facilityRating: 4.2, availableSpots: 20, totalSpots: 80, imageUrl: 'https://placehold.co/800x450.png', slotLabel: 'N/A', floorLevel: 'N/A', isOccupied: false, slotType: 'standard', dataAiHint: "modern parking structure" },
   ];
   return mockSpaces.find(s => s.id === spaceId) || null;
 };
-
-// generateStaticParams removed as it cannot co-exist with "use client" in the same file for output: 'export'
-// The page will be client-side rendered for its dynamic content.
 
 const FeatureDisplay = ({ feature }: { feature: ParkingFeature }) => {
   const Icon = featureIcons[feature] || Car;
@@ -46,7 +40,7 @@ const FeatureDisplay = ({ feature }: { feature: ParkingFeature }) => {
 export default function BookingPage() {
   const params = useParams();
   const router = useRouter();
-  const pathname = usePathname(); // Get current path
+  const pathname = usePathname();
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const spaceId = params.spaceId as string;
 
@@ -54,16 +48,15 @@ export default function BookingPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [userDefaultVehiclePlate, setUserDefaultVehiclePlate] = useState<string | undefined>(undefined);
 
-
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       toast({ title: "Login Required", description: "Please log in to book a parking space.", variant: "destructive" });
-      router.push(`/login?redirect=${encodeURIComponent(pathname)}`); // Use current path for redirect
+      router.push(`/login?redirect=${encodeURIComponent(pathname)}`);
       return;
     }
 
-    if (spaceId) {
-      setIsLoading(true); // Set loading true when fetching starts
+    if (isAuthenticated && spaceId) { // Only fetch if authenticated and spaceId exists
+      setIsLoading(true);
       fetchSpaceDetails(spaceId)
         .then(data => {
           setSpace(data);
@@ -74,8 +67,10 @@ export default function BookingPage() {
         }).finally(() => {
             setIsLoading(false);
         });
-    } else {
-        setIsLoading(false); // If no spaceId, stop loading
+    } else if (!spaceId) { // If no spaceId, stop loading
+        setIsLoading(false);
+        toast({title: "Invalid Space", description: "No parking space ID provided.", variant: "destructive"});
+        router.push('/search');
     }
     
     if(user && user.profile?.preferences?.defaultVehiclePlate) {
@@ -98,6 +93,18 @@ export default function BookingPage() {
         <Header />
         <main className="flex-grow container mx-auto px-4 md:px-6 py-8 flex items-center justify-center">
           <Loader2 className="h-16 w-16 animate-spin text-primary" />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) { // Should be caught by useEffect, but as a fallback
+     return (
+      <div className="flex flex-col min-h-screen">
+        <Header />
+        <main className="flex-grow container mx-auto px-4 md:px-6 py-8 flex items-center justify-center">
+          <p>Redirecting to login...</p> <Loader2 className="ml-2 h-5 w-5 animate-spin text-primary" />
         </main>
         <Footer />
       </div>
@@ -134,7 +141,7 @@ export default function BookingPage() {
             <Card className="shadow-xl overflow-hidden">
               {space.imageUrl && (
                 <div className="relative w-full h-64 md:h-80">
-                  <Image src={space.imageUrl} alt={space.facilityName} layout="fill" objectFit="cover" data-ai-hint={space.dataAiHint || "parking garage entrance"} priority/>
+                  <Image src={space.imageUrl} alt={space.facilityName || "Parking space image"} layout="fill" objectFit="cover" data-ai-hint={space.dataAiHint || "parking garage entrance"} priority/>
                 </div>
               )}
               <CardHeader>
@@ -163,7 +170,7 @@ export default function BookingPage() {
           </div>
 
           <div className="lg:col-span-5">
-            <Card className="shadow-xl sticky top-24"> {/* Sticky booking form */}
+            <Card className="shadow-xl sticky top-24">
               <CardHeader>
                 <CardTitle className="text-xl">Select Your Booking Details</CardTitle>
                 <CardDescription>Choose your date, time, and duration.</CardDescription>

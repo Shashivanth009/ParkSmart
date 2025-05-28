@@ -12,7 +12,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AppLogo } from '@/components/core/AppLogo';
-import { ChromeIcon } from 'lucide-react';
+import { ChromeIcon } from 'lucide-react'; // Assuming you have this or a similar icon
 import { toast } from '@/hooks/use-toast';
 import { useEffect } from 'react';
 
@@ -70,20 +70,19 @@ export default function LoginPage() {
     try {
       await loginWithGoogle();
       // Redirection is handled by useAuth or useEffect
-    } catch (error) {
+    } catch (error: any) {
       // Error is already handled by toast in useAuth
-      console.error("Login page Google login error:", error);
+      console.error("Login page Google login error:", error.message);
     }
   }
   
-  // No need for this explicit loading redirect, useEffect handles it
-  // if (isAuthenticated) {
-  //   return (
-  //     <div className="flex min-h-screen items-center justify-center p-4">
-  //       <p>Redirecting to dashboard...</p>
-  //     </div>
-  //   );
-  // }
+  if (isAuthenticated) { // To prevent flicker if already authenticated
+    return (
+      <div className="flex min-h-screen items-center justify-center p-4">
+        <p>Redirecting...</p>
+      </div>
+    );
+  }
 
 
   return (

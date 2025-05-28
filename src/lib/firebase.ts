@@ -6,6 +6,7 @@ import { getAuth, type Auth } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 
 // Your web app's Firebase configuration
+// THIS CONFIGURATION WAS PROVIDED BY THE USER
 const firebaseConfig = {
   apiKey: "AIzaSyCY56IeVniiID4OfD0nRh2xQNPtoAZxMvo",
   authDomain: "parksmart-q73kd.firebaseapp.com",

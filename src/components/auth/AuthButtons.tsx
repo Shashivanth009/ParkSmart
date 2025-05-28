@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useAuth, type AuthUser } from '@/hooks/useAuth'; // Import AuthUser if needed
+import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -24,7 +24,7 @@ export function AuthButtons() {
     return <Button variant="ghost" size="icon" disabled><Loader2 className="h-5 w-5 animate-spin" /></Button>;
   }
 
-  if (isAuthenticated && user) {
+  if (isAuthenticated && user) { // Ensure user object exists
     const displayName = user.profile?.name || user.displayName || user.email?.split('@')[0] || 'User';
     const displayEmail = user.email || 'No email available';
     const avatarSrc = user.profile?.avatarUrl || user.photoURL || `https://placehold.co/100x100.png?text=${displayName.charAt(0).toUpperCase()}`;

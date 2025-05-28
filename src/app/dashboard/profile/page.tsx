@@ -15,20 +15,25 @@ export default function ProfilePage() {
 
   useEffect(() => {
     const loadProfile = async () => {
-      if (user?.uid) {
+      if (user?.uid) { // User from useAuth hook is already enriched or being enriched
         setIsLoading(true);
-        try {
+        if (user.profile) { // If profile already loaded via useAuth
+           setUserProfile({
+            ...user.profile,
+            name: user.profile.name || user.displayName || user.email?.split('@')[0] || '',
+            email: user.email || '',
+            avatarUrl: user.profile.avatarUrl || user.photoURL || `https://placehold.co/150x150.png?text=${(user.profile.name || user.displayName || 'U').charAt(0)}`,
+          });
+        } else { // Fallback if profile somehow not on user object yet, try fetching
           const profileFromDb = await fetchUserProfileData(user);
           if (profileFromDb) {
             setUserProfile({
-              ...profileFromDb, // Data from Firestore
+              ...profileFromDb,
               name: profileFromDb.name || user.displayName || user.email?.split('@')[0] || '',
-              email: user.email || '', // Email from Firebase Auth is source of truth
+              email: user.email || '',
               avatarUrl: profileFromDb.avatarUrl || user.photoURL || `https://placehold.co/150x150.png?text=${(profileFromDb.name || user.displayName || 'U').charAt(0)}`,
             });
           } else {
-            // If no profile in DB yet (e.g., new user after email/pass signup but before profile form save)
-            // Create a default one for the form
              setUserProfile({
                 name: user.displayName || user.email?.split('@')[0] || '',
                 email: user.email || '',
@@ -41,13 +46,9 @@ export default function ProfilePage() {
             });
             toast({title: "Complete Your Profile", description: "Please fill in your profile details."});
           }
-        } catch (error) {
-          console.error("Failed to fetch profile:", error);
-          toast({title: "Error", description: "Could not load profile.", variant: "destructive"});
-        } finally {
-          setIsLoading(false);
         }
-      } else if (!authLoading) { // If no user and auth is not loading, means not logged in or error
+        setIsLoading(false);
+      } else if (!authLoading) { 
         setIsLoading(false);
       }
     };
@@ -57,7 +58,6 @@ export default function ProfilePage() {
   const handleProfileUpdate = async (data: Partial<UserProfileType>) => {
     if (!user?.uid || !userProfile) return;
     
-    // Prepare data for Firestore, excluding email if you don't want it updatable there
     const firestoreData: Partial<UserProfileType> = {
         name: data.name,
         phone: data.phone,
@@ -71,16 +71,10 @@ export default function ProfilePage() {
 
     try {
       await updateUserProfileData(user.uid, firestoreData);
-      // Optimistically update local state or re-fetch
-      setUserProfile(current => ({
-        ...(current as UserProfileType), // Cast current to UserProfileType
-        ...data, // Apply changes
-        email: user.email || '', // Ensure email from auth is preserved
-      }));
-      // toast({ title: "Profile Updated", description: "Your changes have been saved successfully." }); // toast is in useAuth now
+      // user state in useAuth will be updated, causing re-render
     } catch (error) {
       console.error("Failed to update profile:", error);
-      // toast({ title: "Update Failed", description: "Could not save profile changes. Please try again.", variant: "destructive" }); // toast is in useAuth now
+      // Toast is handled in updateUserProfileData
       throw error; 
     }
   };
@@ -94,9 +88,7 @@ export default function ProfilePage() {
   }
 
   if (!userProfile) {
-     // This might happen if user is not authenticated, dashboard layout should prevent this.
-     // Or if profile fetching failed.
-    return <p>Could not load user profile. Ensure you are logged in.</p>;
+    return <p>Could not load user profile. Ensure you are logged in and your email is verified.</p>;
   }
 
   return (

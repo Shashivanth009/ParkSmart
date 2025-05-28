@@ -11,7 +11,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { useAuth } from "@/hooks/useAuth"; // Import useAuth to get loading state
+import { useAuth } from "@/hooks/useAuth";
 import { UploadCloud } from "lucide-react";
 import { useEffect } from 'react';
 
@@ -21,8 +21,8 @@ const profileSchema = z.object({
   phone: z.string().optional().refine(val => !val || /^[+]?[0-9]{10,15}$/.test(val), {
     message: "Invalid phone number format.",
   }),
-  avatarUrl: z.string().url({ message: "Please enter a valid URL for the avatar." }).optional().or(z.literal("")),
-  defaultVehiclePlate: z.string().optional().refine(val => !val || /^[A-Z0-9\s-]{3,10}$/i.test(val), { // Added vehicle plate validation
+  avatarUrl: z.string().url({ message: "Please enter a valid URL for the avatar." }).optional().or(z.literal("")).or(z.null()),
+  defaultVehiclePlate: z.string().optional().refine(val => !val || /^[A-Z0-9\s-]{3,10}$/i.test(val), {
     message: "Invalid vehicle plate format (3-10 alphanumeric chars, spaces, hyphens)."
   }),
   requireCovered: z.boolean().optional(),
@@ -32,20 +32,18 @@ const profileSchema = z.object({
 export type ProfileFormValues = z.infer<typeof profileSchema>;
 
 interface UserProfileFormProps {
-  userProfile: UserProfileType; // This will now come from useAuth, already merged
+  userProfile: UserProfileType;
   onSubmit: (data: ProfileFormValues) => Promise<void>;
 }
 
 export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: UserProfileFormProps) {
-  const { loading: authLoading } = useAuth(); // Get auth loading state
+  const { loading: authLoading } = useAuth();
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
-    // Default values will be set by useEffect to ensure form re-initializes if userProfile prop changes
   });
 
   useEffect(() => {
-    // Reset form with new userProfile data when it changes (e.g., after initial load)
     form.reset({
       name: userProfile.name || "",
       email: userProfile.email || "", 
@@ -59,11 +57,11 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
 
 
   async function processSubmit(values: ProfileFormValues) {
-    // Prepare data for submission, potentially transforming if UserProfileType differs
     const submitData = {
-        ...values, // includes name, email, phone, avatarUrl
+        ...values,
+        avatarUrl: values.avatarUrl || undefined, // Ensure empty string becomes undefined
         preferences: {
-            defaultVehiclePlate: values.defaultVehiclePlate,
+            defaultVehiclePlate: values.defaultVehiclePlate || undefined,
             requireCovered: values.requireCovered,
             requireEVCharging: values.requireEVCharging,
         }
@@ -90,14 +88,14 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
               render={({ field }) => (
                 <FormItem className="flex flex-col items-center text-center">
                   <Avatar className="w-24 h-24 mb-2 ring-2 ring-primary ring-offset-2 ring-offset-background">
-                    <AvatarImage src={currentAvatar} alt={currentName} data-ai-hint="person portrait" />
+                    <AvatarImage src={currentAvatar || undefined} alt={currentName} data-ai-hint="person portrait" />
                     <AvatarFallback>{currentName?.charAt(0).toUpperCase() || 'U'}</AvatarFallback>
                   </Avatar>
                   <FormControl>
                     <div className="flex items-center gap-2 w-full max-w-sm mx-auto">
-                      <Input type="url" placeholder="Image URL for avatar" {...field} className="text-xs"/>
+                      <Input type="url" placeholder="Image URL for avatar" {...field} value={field.value ?? ""} className="text-xs"/>
                       <Button type="button" variant="outline" size="icon" className="shrink-0" 
-                        onClick={() => {/* Future: Open file dialog */ alert("File upload for avatar coming soon! For now, please use a URL.");}}>
+                        onClick={() => alert("File upload for avatar coming soon! For now, please use a URL.")}>
                         <UploadCloud className="h-4 w-4"/>
                       </Button>
                     </div>
@@ -125,7 +123,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
                 <FormItem>
                   <FormLabel>Email Address</FormLabel>
                   <FormControl><Input placeholder="your@email.com" {...field} readOnly className="bg-muted/50 cursor-not-allowed" /></FormControl>
-                  <FormDescription>Email address cannot be changed.</FormDescription>
+                  <FormDescription>Email address cannot be changed here.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -136,7 +134,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Phone Number (Optional)</FormLabel>
-                  <FormControl><Input type="tel" placeholder="+1 234 567 8900" {...field} /></FormControl>
+                  <FormControl><Input type="tel" placeholder="+1 234 567 8900" {...field} value={field.value ?? ""} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -156,7 +154,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Default Vehicle Plate (Optional)</FormLabel>
-                  <FormControl><Input placeholder="XYZ 123" {...field} /></FormControl>
+                  <FormControl><Input placeholder="XYZ 123" {...field} value={field.value ?? ""} /></FormControl>
                   <FormDescription>Enter your most frequently used vehicle's number plate.</FormDescription>
                   <FormMessage />
                 </FormItem>

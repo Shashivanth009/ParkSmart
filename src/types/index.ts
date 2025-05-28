@@ -5,28 +5,27 @@ import type { Timestamp } from 'firebase/firestore';
 
 // Represents an individual parking slot with facility context
 export interface ParkingSpace {
-  id: string; // Unique ID for the slot itself
-  slotLabel: string; // e.g., "#5" or "A-03"
-  floorLevel: string; // e.g., "Floor 1", "P2"
+  id: string; 
+  slotLabel: string; 
+  floorLevel: string; 
   isOccupied: boolean;
-  vehicleIdOccupying?: string; // If occupied, e.g., "ts07fd1463"
-  occupiedSince?: string; // If occupied, e.g., "Since: 9:42 AM"
-  slotType: 'standard' | 'accessible' | 'ev-charging'; // Determines icon and specific filtering
+  vehicleIdOccupying?: string; 
+  occupiedSince?: string; 
+  slotType: 'standard' | 'accessible' | 'ev-charging';
 
-  // Contextual info about the facility this slot belongs to
-  facilityName: string; // Name of the parking garage/lot
-  facilityAddress: string; // Address of the parking garage/lot
-  facilityCoordinates: { lat: number; lng: number }; // Coordinates for map markers
-  pricePerHour?: number; // Price for this type of slot at this facility
+  facilityName: string; 
+  facilityAddress: string; 
+  facilityCoordinates: { lat: number; lng: number }; 
+  pricePerHour?: number; 
   
-  imageUrl?: string; // URL for a representative image of the FACILITY
-  dataAiHint?: string; // Hint for the FACILITY image (e.g., "parking garage interior")
-  facilityRating?: number; // Overall rating of the parking facility
+  imageUrl?: string; 
+  dataAiHint?: string; 
+  facilityRating?: number; 
 
-  availability?: 'high' | 'medium' | 'low' | 'full'; // Overall facility availability
-  features?: Array<'covered' | 'ev-charging' | 'cctv' | 'disabled-access' | 'well-lit' | 'secure'>; // Facility features
-  totalSpots?: number; // Total spots in the facility
-  availableSpots?: number; // Available spots in the facility (facility-wide)
+  availability?: 'high' | 'medium' | 'low' | 'full'; 
+  features?: ParkingFeature[]; 
+  totalSpots?: number; 
+  availableSpots?: number; 
 }
 
 
@@ -35,26 +34,25 @@ export interface Booking {
   spaceId: string; 
   spaceName: string;
   spaceAddress: string;
-  startTime: string; // ISO string
-  endTime: string; // ISO string
+  startTime: string; 
+  endTime: string; 
   totalCost: number;
   status: 'upcoming' | 'active' | 'completed' | 'cancelled';
   vehiclePlate?: string;
 }
 
 export interface UserProfile {
-  // uid will be the document ID in Firestore, same as Firebase Auth uid
   name: string;
-  email: string; // Stored for convenience, but Firebase Auth email is source of truth
+  email: string; 
   phone?: string;
-  avatarUrl?: string;
+  avatarUrl?: string | null; // Allow null for Firebase photoURL compatibility
   preferences?: {
     defaultVehiclePlate?: string;
     requireCovered?: boolean;
     requireEVCharging?: boolean;
   };
-  createdAt?: Timestamp | Date; // Date user profile was created in Firestore
-  updatedAt?: Timestamp | Date; // Date user profile was last updated
+  createdAt?: Timestamp; // Firestore Timestamp for new docs
+  updatedAt?: Timestamp; // Firestore Timestamp for updates
 }
 
 export interface PaymentMethod {

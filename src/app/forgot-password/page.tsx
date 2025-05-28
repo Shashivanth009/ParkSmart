@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { AppLogo } from '@/components/core/AppLogo';
-import { useAuth } from '@/hooks/useAuth'; // Import useAuth
+import { useAuth } from '@/hooks/useAuth';
 import { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 
@@ -21,8 +21,8 @@ const forgotPasswordSchema = z.object({
 type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
 
 export default function ForgotPasswordPage() {
-  const { sendPasswordResetEmail, loading: authLoading } = useAuth(); // Use loading from useAuth
-  const [formLoading, setFormLoading] = useState(false);
+  const { sendPasswordResetEmail, loading: authLoading } = useAuth();
+  const [formSubmitting, setFormSubmitting] = useState(false); // Renamed from loading to avoid conflict
   const [submitted, setSubmitted] = useState(false);
 
   const form = useForm<ForgotPasswordFormValues>({
@@ -33,7 +33,7 @@ export default function ForgotPasswordPage() {
   });
 
   async function onSubmit(values: ForgotPasswordFormValues) {
-    setFormLoading(true);
+    setFormSubmitting(true);
     try {
       await sendPasswordResetEmail(values.email);
       // Toast notification is handled within useAuth's sendPasswordResetEmail
@@ -42,7 +42,7 @@ export default function ForgotPasswordPage() {
       // Error is already handled by toast in useAuth
       console.error("Forgot password submit error:", error);
     } finally {
-      setFormLoading(false);
+      setFormSubmitting(false);
     }
   }
 
@@ -100,8 +100,8 @@ export default function ForgotPasswordPage() {
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full" disabled={formLoading || authLoading}>
-                {formLoading || authLoading ? "Sending Link..." : "Send Reset Link"}
+              <Button type="submit" className="w-full" disabled={formSubmitting || authLoading}>
+                {formSubmitting || authLoading ? "Sending Link..." : "Send Reset Link"}
               </Button>
             </form>
           </Form>

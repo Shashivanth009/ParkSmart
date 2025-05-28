@@ -2,7 +2,7 @@
 "use client";
 import type { ReactNode } from 'react';
 import { useState, useEffect, createContext, useContext, useCallback } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import {
   onAuthStateChanged,
   signOut,
@@ -14,15 +14,15 @@ import {
   sendPasswordResetEmail as firebaseSendPasswordResetEmail,
   confirmPasswordReset as firebaseConfirmPasswordReset,
   type User as FirebaseUser,
-  updateProfile as updateFirebaseProfile, // For updating displayName/photoURL in Firebase Auth user
+  updateProfile as updateFirebaseProfile,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp, updateDoc, type Timestamp } from 'firebase/firestore';
-import { auth, db, firebaseInitialized, firebaseInitializationError } from '@/lib/firebase'; // Assuming firebase.ts exports auth and db
-import type { UserProfile } from '@/types'; // Ensure this type aligns with your Firestore structure
+import { auth, db, firebaseInitialized, firebaseInitializationError } from '@/lib/firebase';
+import type { UserProfile } from '@/types';
 import { toast } from '@/hooks/use-toast';
 
 export interface AuthUser extends FirebaseUser {
-  profile?: UserProfile; 
+  profile?: UserProfile;
 }
 
 interface AuthContextType {
@@ -46,9 +46,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const fetchUserProfileData = useCallback(async (firebaseUser: FirebaseUser): Promise<UserProfile | null> => {
-    if (!db || !firebaseUser) return null; // Check if db is initialized
+    if (!db || !firebaseUser) return null;
     const userDocRef = doc(db, 'users', firebaseUser.uid);
     try {
       const userDocSnap = await getDoc(userDocRef);
@@ -57,12 +58,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (error) {
       console.error("Error fetching user profile from Firestore:", error);
+      toast({ title: "Profile Error", description: "Could not load user profile.", variant: "destructive" });
     }
     return null;
   }, []);
   
   const updateUserProfileData = useCallback(async (userId: string, data: Partial<UserProfile>): Promise<void> => {
-    if (!db || !auth?.currentUser) { // Check if db and auth are initialized
+    if (!db || !auth?.currentUser) {
       toast({ title: "Error", description: "Cannot update profile. Service unavailable.", variant: "destructive" });
       throw new Error("Firestore or Auth service unavailable.");
     }
@@ -70,7 +72,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const userDocRef = doc(db, 'users', userId);
     const firestoreData: any = { ...data, updatedAt: serverTimestamp() };
     
-    // Separate Firebase Auth profile updates (displayName, photoURL)
     const authProfileUpdates: { displayName?: string; photoURL?: string } = {};
     if (data.name && data.name !== auth.currentUser.displayName) {
         authProfileUpdates.displayName = data.name;
@@ -80,17 +81,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      await updateDoc(userDocRef, firestoreData);
+      await updateDoc(userDocRef, firestoreData, { merge: true });
       if (Object.keys(authProfileUpdates).length > 0 && auth.currentUser) {
           await updateFirebaseProfile(auth.currentUser, authProfileUpdates);
       }
       
-      // Optimistically update local state or re-fetch
       if (user && user.uid === userId) {
-          const updatedProfile = await fetchUserProfileData(user); // Re-fetch to get fresh data including serverTimestamp
+          const updatedProfile = await fetchUserProfileData(auth.currentUser); 
           setUser(currentUser => currentUser ? ({ 
             ...currentUser, 
-            displayName: authProfileUpdates.displayName || currentUser.displayName, // Update auth fields directly
+            displayName: authProfileUpdates.displayName || currentUser.displayName,
             photoURL: authProfileUpdates.photoURL || currentUser.photoURL,
             profile: updatedProfile || currentUser.profile 
           }) : null);
@@ -103,17 +103,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [user, fetchUserProfileData]);
 
-
   useEffect(() => {
     if (!firebaseInitialized) {
       setLoading(false);
       setUser(null);
       console.error("Firebase not initialized in AuthProvider. Auth features disabled.", firebaseInitializationError);
       toast({
-        title: "Application Initialization Error",
-        description: `Could not connect to backend services. Authentication features may be unavailable. Details: ${firebaseInitializationError?.message || 'Unknown error'}`,
+        title: "Application Error",
+        description: `Authentication services unavailable. ${firebaseInitializationError?.message || 'Unknown Firebase init error'}`,
         variant: "destructive",
-        duration: 10000, // Show longer
+        duration: 10000,
       });
       return;
     }
@@ -127,39 +126,54 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const profile = await fetchUserProfileData(firebaseUser);
-        setUser({ 
-            ...firebaseUser, 
-            // Ensure displayName and photoURL on the root user object are also consistent
-            displayName: profile?.name || firebaseUser.displayName,
-            photoURL: profile?.avatarUrl || firebaseUser.photoURL,
-            profile: profile || undefined 
-        });
+        if (firebaseUser.emailVerified) {
+          const profile = await fetchUserProfileData(firebaseUser);
+          setUser({ 
+              ...firebaseUser, 
+              displayName: profile?.name || firebaseUser.displayName,
+              photoURL: profile?.avatarUrl || firebaseUser.photoURL,
+              profile: profile || undefined 
+          });
+        } else {
+          // If user is logged in but email is not verified, keep them logged out of app state
+          // and prompt them to verify.
+          if (!pathname.startsWith('/login') && !pathname.startsWith('/signup') && !pathname.startsWith('/reset-password')) {
+            toast({ title: "Email Verification Required", description: "Please check your email to verify your account before logging in.", variant: "destructive", duration: 7000 });
+            await signOut(auth); // Sign them out of Firebase session too
+          }
+          setUser(null);
+        }
       } else {
         setUser(null);
       }
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [fetchUserProfileData]);
+  }, [fetchUserProfileData, pathname]);
 
   const loginWithEmail = async (email: string, password: string) => {
     if (!firebaseInitialized || !auth) {
-      toast({ title: "Login Failed", description: "Authentication service not ready.", variant: "destructive" });
-      return;
+      toast({ title: "Login Failed", description: "Auth service unavailable.", variant: "destructive" });
+      throw new Error("Auth service unavailable.");
     }
     setLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       if (!userCredential.user.emailVerified) {
-        await signOut(auth);
-        setUser(null);
-        toast({ title: "Verification Required", description: "Please verify your email before logging in. A new verification email has been sent.", variant: "destructive", duration: 7000 });
-        await sendEmailVerification(userCredential.user);
-        router.push('/login?message=verification-sent'); // or a specific "please verify" page
+        await signOut(auth); // Sign out of Firebase
+        setUser(null); // Clear local user state
+        toast({ title: "Verification Required", description: "Please verify your email before logging in. A new verification email has been sent if the previous one expired.", variant: "destructive", duration: 7000 });
+        // Attempt to resend verification email
+        try {
+            await sendEmailVerification(userCredential.user);
+        } catch (verificationError) {
+            console.error("Failed to resend verification email:", verificationError);
+        }
+        router.push('/login?message=verification-sent');
         setLoading(false);
-        return;
+        return; // Important to stop further execution
       }
+      // If email is verified, proceed to fetch profile and set user
       const profile = await fetchUserProfileData(userCredential.user);
       setUser({ 
         ...userCredential.user, 
@@ -167,11 +181,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         photoURL: profile?.avatarUrl || userCredential.user.photoURL,
         profile: profile || undefined 
       });
-      const redirectPath = new URLSearchParams(window.location.search).get('redirect') || '/dashboard';
-      router.push(redirectPath);
+      const redirectParam = searchParams.get('redirect');
+      router.push(redirectParam || '/dashboard');
     } catch (error: any) {
       console.error("Email login error:", error);
-      toast({ title: "Login Failed", description: error.message || "Invalid credentials.", variant: "destructive" });
+      toast({ title: "Login Failed", description: error.message || "Invalid credentials or unverified email.", variant: "destructive" });
       setUser(null); 
       throw error;
     } finally {
@@ -181,8 +195,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const loginWithGoogle = async () => {
     if (!firebaseInitialized || !auth || !db) {
-      toast({ title: "Google Login Failed", description: "Authentication service not ready.", variant: "destructive" });
-      return;
+      toast({ title: "Google Login Failed", description: "Auth service unavailable.", variant: "destructive" });
+      throw new Error("Auth service unavailable.");
     }
     setLoading(true);
     const provider = new GoogleAuthProvider();
@@ -200,21 +214,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
           email: firebaseUser.email || '',
           avatarUrl: firebaseUser.photoURL || `https://placehold.co/150x150.png?text=${(firebaseUser.displayName || 'G')[0]}`,
-          createdAt: serverTimestamp() as Timestamp, // Cast for new docs
+          createdAt: serverTimestamp() as Timestamp,
           preferences: { defaultVehiclePlate: '', requireCovered: false, requireEVCharging: false }
         };
         await setDoc(userDocRef, userProfileData);
       } else {
         userProfileData = userDocSnap.data() as UserProfile;
-        const updates: Partial<UserProfile> = {};
+        const updates: Partial<UserProfile> = {updatedAt: serverTimestamp() as Timestamp};
         if (firebaseUser.displayName && firebaseUser.displayName !== userProfileData.name) {
             updates.name = firebaseUser.displayName;
         }
         if (firebaseUser.photoURL && firebaseUser.photoURL !== userProfileData.avatarUrl) {
             updates.avatarUrl = firebaseUser.photoURL;
         }
-        if (Object.keys(updates).length > 0) {
-            await updateDoc(userDocRef, {...updates, updatedAt: serverTimestamp()});
+        if (firebaseUser.email && firebaseUser.email !== userProfileData.email) { // Ensure email is synced
+            updates.email = firebaseUser.email;
+        }
+        if (Object.keys(updates).length > 1) { // more than just updatedAt
+            await updateDoc(userDocRef, updates);
             userProfileData = {...userProfileData, ...updates};
         }
       }
@@ -224,8 +241,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         photoURL: userProfileData.avatarUrl || firebaseUser.photoURL,
         profile: userProfileData 
       });
-      const redirectPath = new URLSearchParams(window.location.search).get('redirect') || '/dashboard';
-      router.push(redirectPath);
+      const redirectParam = searchParams.get('redirect');
+      router.push(redirectParam || '/dashboard');
     } catch (error: any) {
       console.error("Google login error:", error);
       toast({ title: "Google Login Failed", description: error.message || "Could not sign in with Google.", variant: "destructive" });
@@ -238,15 +255,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signupWithEmail = async (name: string, email: string, password: string) => {
     if (!firebaseInitialized || !auth || !db) {
-      toast({ title: "Signup Failed", description: "Authentication service not ready.", variant: "destructive" });
-      return;
+      toast({ title: "Signup Failed", description: "Auth service unavailable.", variant: "destructive" });
+      throw new Error("Auth service unavailable.");
     }
     setLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const firebaseUser = userCredential.user;
       
-      // Update Firebase Auth profile immediately
       await updateFirebaseProfile(firebaseUser, { displayName: name, photoURL: `https://placehold.co/150x150.png?text=${name[0]}` });
 
       const userProfileData: UserProfile = {
@@ -260,7 +276,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       await sendEmailVerification(firebaseUser);
       toast({ title: "Signup Successful", description: "Verification email sent. Please check your inbox to verify your email address.", duration: 7000 });
-      await signOut(auth);
+      
+      await signOut(auth); // Sign out user after signup to force email verification before login
       setUser(null);
       router.push('/login?message=verification-sent');
     } catch (error: any) {
@@ -275,7 +292,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = async () => {
     if (!firebaseInitialized || !auth) {
-      toast({ title: "Logout Failed", description: "Authentication service not ready.", variant: "destructive" });
+      toast({ title: "Logout Failed", description: "Auth service unavailable.", variant: "destructive" });
       return;
     }
     setLoading(true);
@@ -292,10 +309,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const sendPasswordResetEmail = async (emailAddress: string) => {
+  const sendPasswordResetEmailHandler = async (emailAddress: string) => {
     if (!firebaseInitialized || !auth) {
       toast({ title: "Error", description: "Password reset service not ready.", variant: "destructive" });
-      return;
+      throw new Error("Auth service unavailable.");
     }
     setLoading(true);
     try {
@@ -313,7 +330,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const confirmPasswordResetHandler = async (code: string, newPassword: string) => {
     if (!firebaseInitialized || !auth) {
       toast({ title: "Error", description: "Password reset service not ready.", variant: "destructive" });
-      return;
+      throw new Error("Auth service unavailable.");
     }
     setLoading(true);
     try {
@@ -322,15 +339,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       router.push('/login');
     } catch (error: any) {
       console.error("Confirm password reset error:", error);
-      toast({ title: "Password Reset Failed", description: error.message, variant: "destructive" });
+      toast({ title: "Password Reset Failed", description: error.message || "Invalid or expired link.", variant: "destructive" });
       throw error;
     } finally {
       setLoading(false);
     }
   };
 
-
-  const isAuthenticated = !!user;
+  const isAuthenticated = !!user && !!user.emailVerified; // User must exist and be email verified to be authenticated
 
   return (
     <AuthContext.Provider value={{ 
@@ -341,7 +357,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         loginWithGoogle, 
         signupWithEmail, 
         logout, 
-        sendPasswordResetEmail,
+        sendPasswordResetEmail: sendPasswordResetEmailHandler,
         confirmPasswordReset: confirmPasswordResetHandler,
         fetchUserProfileData,
         updateUserProfileData

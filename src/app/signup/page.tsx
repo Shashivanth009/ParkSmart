@@ -119,7 +119,7 @@ export default function SignupPage() {
                 )}
               />
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "Creating Account..." : "Create Account"}
+                {loading ? "Creating Account..." : "Create Account & Verify Email"}
               </Button>
             </form>
           </Form>
