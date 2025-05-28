@@ -58,6 +58,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const userDocSnap = await getDoc(userDocRef);
       if (userDocSnap.exists()) {
         return userDocSnap.data() as UserProfile;
+      } else {
+        console.log("fetchUserProfileData: No profile document found for user:", firebaseUser.uid);
+        return null;
       }
     } catch (error) {
       console.error("Error fetching user profile from Firestore:", error);
@@ -86,7 +89,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      await updateDoc(userDocRef, firestoreData); 
+      await updateDoc(userDocRef, firestoreData, { merge: true }); // Use merge: true to avoid overwriting entire doc if only partial update
       if (Object.keys(authProfileUpdates).length > 0 && auth.currentUser) {
           await updateFirebaseProfile(auth.currentUser, authProfileUpdates);
       }
@@ -117,9 +120,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       const currentPath = window.location.pathname;
       const nonAuthPaths = ['/login', '/signup', '/forgot-password', '/reset-password'];
-      const isAuthPath = nonAuthPaths.some(p => currentPath.startsWith(p));
+      // Check if current path is one of the non-auth paths
+      const isNonAuthPage = nonAuthPaths.some(p => currentPath === p || (currentPath.startsWith(p) && p !== '/'));
 
-      if (!isAuthPath) { // Only show toast if not on an auth page, to avoid spamming during redirection.
+      if (!isNonAuthPage) { // Only show toast if not on an auth page, to avoid spamming.
         toast({
             title: "Application Error",
             description: `Authentication services unavailable: ${errorMsg}`,
@@ -144,13 +148,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     console.log("AuthProvider: Setting up onAuthStateChanged listener. Firebase Initialized:", firebaseInitialized, "Auth Ready:", !!auth);
+    if (auth && auth.app) {
+        console.log("AuthProvider: Auth App options at onAuthStateChanged setup:", JSON.parse(JSON.stringify(auth.app.options)));
+    } else {
+        console.warn("AuthProvider: Auth object or auth.app is null/undefined at onAuthStateChanged setup.");
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       console.log("AuthProvider: onAuthStateChanged triggered. FirebaseUser:", firebaseUser ? firebaseUser.uid : 'null');
       if (firebaseUser) {
         if (firebaseUser.emailVerified) {
           console.log("AuthProvider: User email is verified. Fetching profile for", firebaseUser.uid);
           const profile = await fetchUserProfileData(firebaseUser);
-          console.log("AuthProvider: Profile fetched for", firebaseUser.uid, ":", profile);
+          console.log("AuthProvider: Profile fetched for", firebaseUser.uid, "Profile data:", profile);
           setUser({ 
               ...firebaseUser, 
               displayName: profile?.name || firebaseUser.displayName,
@@ -159,7 +169,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           });
         } else {
           console.log("AuthProvider: User email NOT verified for", firebaseUser.uid);
-          if (!pathname.startsWith('/login') && !pathname.startsWith('/signup') && !pathname.startsWith('/reset-password') && !pathname.startsWith('/forgot-password')) {
+          if (!pathname.startsWith('/login') && !pathname.startsWith('/signup') && !pathname.startsWith('/reset-password') && !pathname.startsWith('/forgot-password')  && !pathname.startsWith('/email-verification-sent')) {
             toast({ title: "Email Verification Required", description: "Please check your email to verify your account before logging in.", variant: "destructive", duration: 7000 });
             // Don't sign out here if they just signed up, let them go to login page with message.
             // await signOut(auth); 
@@ -179,12 +189,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [fetchUserProfileData, pathname, router, searchParams]);
 
   const loginWithEmail = async (email: string, password: string) => {
-    if (!firebaseInitialized || !auth) {
+    if (!firebaseInitialized || !auth || !db) {
       toast({ title: "Login Failed", description: "Auth service unavailable.", variant: "destructive" });
-      console.error("loginWithEmail: Firebase services not ready.", { firebaseInitialized, isAuthNull: auth === null, error: firebaseInitializationError });
-      if (auth && auth.app) console.log("Auth App options at loginWithEmail attempt:", JSON.parse(JSON.stringify(auth.app.options)));
+      console.error("loginWithEmail: Firebase services not ready.", { firebaseInitialized, isAuthNull: auth === null, isDbNull: db === null, error: firebaseInitializationError?.message });
+      if (auth && auth.app) console.log("Auth App options at loginWithEmail attempt when service thought unavailable:", JSON.parse(JSON.stringify(auth.app.options)));
       throw new Error("Auth service unavailable.");
     }
+    console.log("loginWithEmail: Attempting login for", email);
+    if (auth && auth.app) {
+        console.log("loginWithEmail: Auth App options before signInWithEmailAndPassword:", JSON.parse(JSON.stringify(auth.app.options)));
+    } else {
+        console.error("loginWithEmail: Auth object or auth.app is null/undefined before signInWithEmailAndPassword.");
+    }
+
     setLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -224,59 +241,65 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const loginWithGoogle = async () => {
     if (!firebaseInitialized || !auth || !db) {
       toast({ title: "Google Login Failed", description: "Auth service unavailable.", variant: "destructive" });
-      console.error("loginWithGoogle: Firebase services not ready.", { firebaseInitialized, isAuthNull: auth === null, isDbNull: db === null, error: firebaseInitializationError });
-      if (auth && auth.app) console.log("Auth App options at loginWithGoogle attempt:", JSON.parse(JSON.stringify(auth.app.options)));
+      console.error("loginWithGoogle: Firebase services not ready.", { firebaseInitialized, isAuthNull: auth === null, isDbNull: db === null, error: firebaseInitializationError?.message });
+      if (auth && auth.app) console.log("Auth App options at loginWithGoogle attempt when service thought unavailable:", JSON.parse(JSON.stringify(auth.app.options)));
       throw new Error("Auth service unavailable.");
     }
+    console.log("loginWithGoogle: Attempting Google Sign-In.");
+     if (auth && auth.app) {
+        console.log("loginWithGoogle: Auth App options before signInWithPopup:", JSON.parse(JSON.stringify(auth.app.options)));
+    } else {
+        console.error("loginWithGoogle: Auth object or auth.app is null/undefined before signInWithPopup.");
+    }
+
     setLoading(true);
     const provider = new GoogleAuthProvider();
     try {
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
       
-      // For Google Sign-In, email is always considered verified by Firebase
-      // So we directly proceed to create/update profile in Firestore
       const userDocRef = doc(db, 'users', firebaseUser.uid);
       const userDocSnap = await getDoc(userDocRef);
 
       let userProfileData: UserProfile;
 
       if (!userDocSnap.exists()) {
-        // New user via Google Sign-In
+        console.log("loginWithGoogle: New user via Google. Creating profile for:", firebaseUser.uid);
         userProfileData = {
           name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
-          email: firebaseUser.email || '', // Google users always have an email
+          email: firebaseUser.email || '', 
           avatarUrl: firebaseUser.photoURL || `https://placehold.co/150x150.png?text=${(firebaseUser.displayName || 'G')[0]}`,
           createdAt: serverTimestamp() as Timestamp,
+          updatedAt: serverTimestamp() as Timestamp,
           preferences: { defaultVehiclePlate: '', requireCovered: false, requireEVCharging: false }
         };
         await setDoc(userDocRef, userProfileData);
       } else {
-        // Existing user, update if necessary
+        console.log("loginWithGoogle: Existing user via Google. Profile data:", userDocSnap.data());
         userProfileData = userDocSnap.data() as UserProfile;
         const updates: Partial<UserProfile> = {updatedAt: serverTimestamp() as Timestamp};
-        // Sync name and avatar from Google profile if changed
+        
         if (firebaseUser.displayName && firebaseUser.displayName !== userProfileData.name) {
             updates.name = firebaseUser.displayName;
         }
         if (firebaseUser.photoURL && firebaseUser.photoURL !== userProfileData.avatarUrl) {
             updates.avatarUrl = firebaseUser.photoURL;
         }
-        if (firebaseUser.email && firebaseUser.email !== userProfileData.email) { // Should not happen often with Google but good to check
+        if (firebaseUser.email && firebaseUser.email !== userProfileData.email) { 
             updates.email = firebaseUser.email;
         }
 
-        if (Object.keys(updates).length > 1) { // At least updatedAt will be there
+        if (Object.keys(updates).length > 1) { 
+            console.log("loginWithGoogle: Updating existing user profile with:", updates);
             await updateDoc(userDocRef, updates);
-            userProfileData = {...userProfileData, ...updates}; // Reflect updates locally
+            userProfileData = {...userProfileData, ...updates}; 
         }
       }
       
-      // Set the user in context
       setUser({ 
         ...firebaseUser, 
-        displayName: userProfileData.name || firebaseUser.displayName, // Use profile name if available
-        photoURL: userProfileData.avatarUrl || firebaseUser.photoURL, // Use profile avatar if available
+        displayName: userProfileData.name || firebaseUser.displayName, 
+        photoURL: userProfileData.avatarUrl || firebaseUser.photoURL, 
         profile: userProfileData 
       });
       
@@ -296,46 +319,66 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signupWithEmail = async (name: string, email: string, password: string) => {
     if (!firebaseInitialized || !auth || !db) {
       toast({ title: "Signup Failed", description: "Auth service unavailable.", variant: "destructive" });
-      console.error("signupWithEmail: Firebase services not ready.", { firebaseInitialized, isAuthNull: auth === null, isDbNull: db === null, error: firebaseInitializationError });
-      if (auth && auth.app) console.log("Auth App options at signupWithEmail attempt:", JSON.parse(JSON.stringify(auth.app.options)));
+      console.error("signupWithEmail: Auth service unavailable or Firebase not initialized properly.", {
+        firebaseInitialized,
+        isAuthNull: auth === null,
+        isDbNull: db === null,
+        initError: firebaseInitializationError ? firebaseInitializationError.message : "No init error"
+      });
+      if (auth && auth.app) console.log("Auth App options at signupWithEmail attempt when service thought unavailable:", JSON.parse(JSON.stringify(auth.app.options)));
       throw new Error("Auth service unavailable.");
     }
-    console.log("Auth options just before signup:", JSON.parse(JSON.stringify(auth.app.options)));
+    
+    console.log("signupWithEmail: Attempting signup for", email);
+    if (auth && auth.app && auth.app.options) {
+        console.log("signupWithEmail: Auth App options before createUserWithEmailAndPassword:", JSON.parse(JSON.stringify(auth.app.options)));
+         if (!auth.app.options.apiKey) {
+            console.error("CRITICAL: auth.app.options.apiKey is missing right before createUserWithEmailAndPassword!", {
+                authOptions: JSON.parse(JSON.stringify(auth.app.options)),
+                firebaseInitialized
+            });
+            toast({ title: "Configuration Error", description: "Firebase API key configuration is missing internally.", variant: "destructive" });
+            setLoading(false);
+            throw new Error("Internal Firebase API key configuration missing.");
+        }
+    } else {
+        console.error("signupWithEmail: Auth object, auth.app, or auth.app.options is null/undefined before createUserWithEmailAndPassword.");
+        toast({ title: "Configuration Error", description: "Firebase auth configuration is not fully loaded.", variant: "destructive" });
+        setLoading(false);
+        throw new Error("Firebase auth configuration not fully loaded.");
+    }
+
     setLoading(true);
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const firebaseUser = userCredential.user;
       
-      // Update Firebase Auth profile (displayName, photoURL)
       await updateFirebaseProfile(firebaseUser, { displayName: name, photoURL: `https://placehold.co/150x150.png?text=${name[0]}` });
 
-      // Create user profile in Firestore
       const userProfileData: UserProfile = {
         name: name,
-        email: firebaseUser.email || '', // Should always exist after creation
-        avatarUrl: firebaseUser.photoURL || `https://placehold.co/150x150.png?text=${name[0]}`, // Use updated photoURL
+        email: firebaseUser.email || '', 
+        avatarUrl: firebaseUser.photoURL || `https://placehold.co/150x150.png?text=${name[0]}`, 
         createdAt: serverTimestamp() as Timestamp,
         updatedAt: serverTimestamp() as Timestamp,
         preferences: { defaultVehiclePlate: '', requireCovered: false, requireEVCharging: false }
       };
       await setDoc(doc(db, 'users', firebaseUser.uid), userProfileData);
       
-      // Send verification email
       await sendEmailVerification(firebaseUser);
       toast({ title: "Signup Successful", description: "Verification email sent. Please check your inbox to verify your email address.", duration: 7000 });
       
-      await signOut(auth); // Sign out the user immediately after signup so they must verify
-      setUser(null); // Clear user state
-      router.push('/login?message=verification-sent'); // Redirect to login with a message
+      await signOut(auth); 
+      setUser(null); 
+      router.push('/login?message=verification-sent'); 
     } catch (error: any) {
-      console.error("Signup error:", error);
-      // Log detailed error if available
+      console.error("Signup attempt failed. Raw error:", error);
       if (error.code) {
         console.error("Firebase Error Code:", error.code);
         console.error("Firebase Error Message:", error.message);
       }
       toast({ title: "Signup Failed", description: error.message || "Could not create account.", variant: "destructive" });
-      setUser(null); // Ensure user state is cleared on error
+      setUser(null); 
       throw error;
     } finally {
       setLoading(false);
@@ -345,7 +388,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = async () => {
     if (!firebaseInitialized || !auth) {
       toast({ title: "Logout Failed", description: "Auth service unavailable.", variant: "destructive" });
-      console.error("logout: Firebase services not ready.", { firebaseInitialized, isAuthNull: auth === null, error: firebaseInitializationError });
+      console.error("logout: Firebase services not ready.", { firebaseInitialized, isAuthNull: auth === null, error: firebaseInitializationError?.message });
       if (auth && auth.app) console.log("Auth App options at logout attempt:", JSON.parse(JSON.stringify(auth.app.options)));
       return;
     }
@@ -366,7 +409,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const sendPasswordResetEmailHandler = async (emailAddress: string) => {
     if (!firebaseInitialized || !auth) {
       toast({ title: "Error", description: "Password reset service not ready.", variant: "destructive" });
-      console.error("sendPasswordResetEmailHandler: Firebase services not ready.", { firebaseInitialized, isAuthNull: auth === null, error: firebaseInitializationError });
+      console.error("sendPasswordResetEmailHandler: Firebase services not ready.", { firebaseInitialized, isAuthNull: auth === null, error: firebaseInitializationError?.message });
       if (auth && auth.app) console.log("Auth App options at sendPasswordResetEmailHandler attempt:", JSON.parse(JSON.stringify(auth.app.options)));
       throw new Error("Auth service unavailable.");
     }
@@ -386,7 +429,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const confirmPasswordResetHandler = async (code: string, newPassword: string) => {
     if (!firebaseInitialized || !auth) {
       toast({ title: "Error", description: "Password reset service not ready.", variant: "destructive" });
-      console.error("confirmPasswordResetHandler: Firebase services not ready.", { firebaseInitialized, isAuthNull: auth === null, error: firebaseInitializationError });
+      console.error("confirmPasswordResetHandler: Firebase services not ready.", { firebaseInitialized, isAuthNull: auth === null, error: firebaseInitializationError?.message });
       if (auth && auth.app) console.log("Auth App options at confirmPasswordResetHandler attempt:", JSON.parse(JSON.stringify(auth.app.options)));
       throw new Error("Auth service unavailable.");
     }
@@ -432,4 +475,3 @@ export const useAuth = () => {
   }
   return context;
 };
-
