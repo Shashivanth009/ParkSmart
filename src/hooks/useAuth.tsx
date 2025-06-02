@@ -22,7 +22,7 @@ import type { UserProfile } from '@/types';
 import { toast } from '@/hooks/use-toast';
 
 export interface AuthUser extends FirebaseUser {
-  profile: UserProfile; 
+  profile: UserProfile;
 }
 
 interface AuthContextType {
@@ -69,56 +69,137 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return null;
   }, []);
 
-  const updateUserProfileData = useCallback(async (userId: string, data: Partial<UserProfile>): Promise<void> => {
+  const updateUserProfileData = useCallback(async (userId: string, dataToUpdate: Partial<UserProfile>): Promise<void> => {
     if (!firebaseInitialized || !db || !auth?.currentUser) {
       toast({ title: "Error", description: "Cannot update profile. Auth/DB service unavailable.", variant: "destructive" });
-      console.error("updateUserProfileData: Firebase services not ready or no current auth user.", { firebaseInitialized, isDbNull: db === null, isAuthNull: auth === null, isAuthCurrentUserNull: auth?.currentUser === null });
-      if (auth && auth.app) console.log("Auth App options at updateUserProfileData attempt:", JSON.parse(JSON.stringify(auth.app.options)));
       return;
     }
 
     const userDocRef = doc(db, 'users', userId);
-    const firestoreData: any = { ...data, updatedAt: serverTimestamp() };
-    if (data.preferences) {
-        firestoreData.preferences = {
-            ...data.preferences,
-            communication: {
-                ...data.preferences.communication
-            }
-        };
+
+    // Prepare the payload for Firestore, explicitly handling undefined values for optional strings
+    const firestorePayload: { [key: string]: any } = {
+      updatedAt: serverTimestamp(),
+    };
+
+    // Handle top-level fields
+    if (dataToUpdate.name !== undefined) {
+      firestorePayload.name = dataToUpdate.name;
+    }
+    // For optional string fields: if key exists in dataToUpdate, and value is undefined or "", store as null. Otherwise, store value.
+    if (dataToUpdate.hasOwnProperty('phone')) {
+      firestorePayload.phone = (dataToUpdate.phone === undefined || dataToUpdate.phone === "") ? null : dataToUpdate.phone;
+    }
+    if (dataToUpdate.hasOwnProperty('avatarUrl')) {
+      firestorePayload.avatarUrl = (dataToUpdate.avatarUrl === undefined || dataToUpdate.avatarUrl === "") ? null : dataToUpdate.avatarUrl;
     }
 
-    const authProfileUpdates: { displayName?: string; photoURL?: string } = {};
-    if (data.name && data.name !== auth.currentUser.displayName) {
-        authProfileUpdates.displayName = data.name;
+    // Handle nested preferences
+    if (dataToUpdate.preferences) {
+      const currentPrefs = user?.profile.preferences || {}; // Base from existing profile
+      const newPrefsPayload: { [key: string]: any } = { ...currentPrefs }; // Start with existing values
+
+      if (dataToUpdate.preferences.hasOwnProperty('defaultVehiclePlate')) {
+        newPrefsPayload.defaultVehiclePlate = (dataToUpdate.preferences.defaultVehiclePlate === undefined || dataToUpdate.preferences.defaultVehiclePlate === "") ? null : dataToUpdate.preferences.defaultVehiclePlate;
+      }
+      if (dataToUpdate.preferences.hasOwnProperty('defaultVehicleMake')) {
+        newPrefsPayload.defaultVehicleMake = (dataToUpdate.preferences.defaultVehicleMake === undefined || dataToUpdate.preferences.defaultVehicleMake === "") ? null : dataToUpdate.preferences.defaultVehicleMake;
+      }
+      if (dataToUpdate.preferences.hasOwnProperty('defaultVehicleModel')) {
+        newPrefsPayload.defaultVehicleModel = (dataToUpdate.preferences.defaultVehicleModel === undefined || dataToUpdate.preferences.defaultVehicleModel === "") ? null : dataToUpdate.preferences.defaultVehicleModel;
+      }
+      if (dataToUpdate.preferences.hasOwnProperty('defaultVehicleColor')) {
+        newPrefsPayload.defaultVehicleColor = (dataToUpdate.preferences.defaultVehicleColor === undefined || dataToUpdate.preferences.defaultVehicleColor === "") ? null : dataToUpdate.preferences.defaultVehicleColor;
+      }
+      
+      // Booleans are directly assigned if present
+      if (dataToUpdate.preferences.requireCovered !== undefined) {
+        newPrefsPayload.requireCovered = dataToUpdate.preferences.requireCovered;
+      }
+      if (dataToUpdate.preferences.requireEVCharging !== undefined) {
+        newPrefsPayload.requireEVCharging = dataToUpdate.preferences.requireEVCharging;
+      }
+
+      if (dataToUpdate.preferences.communication) {
+        newPrefsPayload.communication = { ...(currentPrefs.communication || {}) }; // Start with existing comms prefs
+        if (dataToUpdate.preferences.communication.bookingEmails !== undefined) {
+          newPrefsPayload.communication.bookingEmails = dataToUpdate.preferences.communication.bookingEmails;
+        }
+        if (dataToUpdate.preferences.communication.promotionalEmails !== undefined) {
+          newPrefsPayload.communication.promotionalEmails = dataToUpdate.preferences.communication.promotionalEmails;
+        }
+      }
+      firestorePayload.preferences = newPrefsPayload;
     }
-    if (data.avatarUrl && data.avatarUrl !== auth.currentUser.photoURL) {
-        authProfileUpdates.photoURL = data.avatarUrl;
+    
+    // Auth profile updates (displayName, photoURL for FirebaseUser)
+    const authProfileUpdates: { displayName?: string; photoURL?: string | null } = {};
+    if (dataToUpdate.name && dataToUpdate.name !== auth.currentUser.displayName) {
+        authProfileUpdates.displayName = dataToUpdate.name;
+    }
+    
+    // If avatarUrl is explicitly set to empty string or null in the form, try to set photoURL to null
+    // Otherwise, if it's a new valid URL, update it.
+    if (dataToUpdate.hasOwnProperty('avatarUrl')) {
+        if ((dataToUpdate.avatarUrl === "" || dataToUpdate.avatarUrl === null) && auth.currentUser.photoURL !== null) {
+            authProfileUpdates.photoURL = null;
+        } else if (dataToUpdate.avatarUrl && dataToUpdate.avatarUrl !== auth.currentUser.photoURL) {
+            authProfileUpdates.photoURL = dataToUpdate.avatarUrl;
+        }
     }
 
     try {
-      await updateDoc(userDocRef, firestoreData, { merge: true });
+      console.log("Attempting to update Firestore with payload:", JSON.stringify(firestorePayload, null, 2));
+      await updateDoc(userDocRef, firestorePayload);
+      
       if (Object.keys(authProfileUpdates).length > 0 && auth.currentUser) {
           await updateFirebaseProfile(auth.currentUser, authProfileUpdates);
       }
 
+      // Optimistically update local user state, then re-fetch for consistency
       if (user && user.uid === userId && auth.currentUser) {
-          const firestoreProfileAfterUpdate = await fetchUserProfileData(auth.currentUser);
-          let newEffectiveProfile: UserProfile;
-          if (firestoreProfileAfterUpdate) {
-            newEffectiveProfile = firestoreProfileAfterUpdate;
-          } else {
-            console.warn("updateUserProfileData: Profile not found immediately after update for user:", userId, "Falling back to current user profile state.");
-            newEffectiveProfile = user.profile;
-          }
+          const updatedFirebaseUser = { // Create a snapshot of current FirebaseUser fields
+              ...auth.currentUser,
+              displayName: authProfileUpdates.displayName !== undefined ? authProfileUpdates.displayName : auth.currentUser.displayName,
+              photoURL: authProfileUpdates.photoURL !== undefined ? authProfileUpdates.photoURL : auth.currentUser.photoURL,
+          };
+          
+          // Create a merged profile for optimistic update
+          const optimisticallyUpdatedProfile: UserProfile = {
+            ...user.profile, // Start with current local profile
+            ...(firestorePayload as Partial<UserProfile>), // Overlay with what was sent to Firestore
+            // Ensure nested preferences are also merged correctly
+            preferences: firestorePayload.preferences ? {
+                ...user.profile.preferences,
+                ...firestorePayload.preferences,
+                communication: firestorePayload.preferences.communication ? {
+                    ...user.profile.preferences?.communication,
+                    ...firestorePayload.preferences.communication,
+                } : user.profile.preferences?.communication,
+            } : user.profile.preferences,
+            // Ensure timestamps are present
+            updatedAt: serverTimestamp() as Timestamp, // This will be a sentinel locally
+          };
+
 
           setUser(currentUser => currentUser ? ({
-            ...currentUser, 
-            displayName: auth.currentUser?.displayName,
-            photoURL: auth.currentUser?.photoURL,
-            email: auth.currentUser?.email, 
-            profile: newEffectiveProfile 
+            ...(updatedFirebaseUser as FirebaseUser), // Cast because we constructed it like a FirebaseUser
+            profile: optimisticallyUpdatedProfile
           }) : null);
+
+          // Re-fetch from Firestore for definitive state after a short delay
+          // to allow server-side timestamp to be set and propagation.
+          setTimeout(async () => {
+            if (auth.currentUser) {
+                const freshProfile = await fetchUserProfileData(auth.currentUser);
+                if (freshProfile) {
+                    setUser(currUser => currUser ? ({
+                        ...auth.currentUser!, // Use the latest auth.currentUser
+                        profile: freshProfile
+                    }) : null);
+                }
+            }
+          }, 500);
       }
       toast({ title: "Profile Updated", description: "Your changes have been saved." });
     } catch (error: any) {
@@ -163,48 +244,39 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
     }
 
-    console.log("AuthProvider: Setting up onAuthStateChanged listener. Firebase Initialized:", firebaseInitialized, "Auth Ready:", !!auth);
-    if (auth && auth.app) {
-        console.log("AuthProvider: Auth App options at onAuthStateChanged setup:", JSON.parse(JSON.stringify(auth.app.options)));
-    } else {
-        console.warn("AuthProvider: Auth object or auth.app is null/undefined at onAuthStateChanged setup.");
-    }
-
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log("AuthProvider: onAuthStateChanged triggered. FirebaseUser:", firebaseUser ? firebaseUser.uid : 'null');
       if (firebaseUser) {
         if (firebaseUser.emailVerified) {
-          console.log("AuthProvider: User email is verified. Fetching profile for", firebaseUser.uid);
           const firestoreProfile = await fetchUserProfileData(firebaseUser);
-
           let effectiveProfile: UserProfile;
+
           if (firestoreProfile) {
             effectiveProfile = {
-                ...firestoreProfile,
+                ...firestoreProfile, // Spread existing Firestore data first
                 name: firestoreProfile.name || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
                 email: firestoreProfile.email || firebaseUser.email || '',
-                avatarUrl: firestoreProfile.avatarUrl || firebaseUser.photoURL || `https://placehold.co/150x150.png?text=${(firestoreProfile.name || firebaseUser.displayName || firebaseUser.email || 'U').charAt(0).toUpperCase()}`,
-                preferences: {
+                avatarUrl: firestoreProfile.avatarUrl || firebaseUser.photoURL,
+                preferences: { // Ensure preferences and communication sub-object exist with defaults
                     defaultVehiclePlate: firestoreProfile.preferences?.defaultVehiclePlate || "",
                     defaultVehicleMake: firestoreProfile.preferences?.defaultVehicleMake || "",
                     defaultVehicleModel: firestoreProfile.preferences?.defaultVehicleModel || "",
                     defaultVehicleColor: firestoreProfile.preferences?.defaultVehicleColor || "",
-                    requireCovered: firestoreProfile.preferences?.requireCovered === true,
-                    requireEVCharging: firestoreProfile.preferences?.requireEVCharging === true,
+                    requireCovered: firestoreProfile.preferences?.requireCovered === true, // Ensure boolean
+                    requireEVCharging: firestoreProfile.preferences?.requireEVCharging === true, // Ensure boolean
                     communication: {
                         bookingEmails: firestoreProfile.preferences?.communication?.bookingEmails !== undefined ? firestoreProfile.preferences.communication.bookingEmails : true,
-                        promotionalEmails: firestoreProfile.preferences?.communication?.promotionalEmails === true,
+                        promotionalEmails: firestoreProfile.preferences?.communication?.promotionalEmails === true, // Ensure boolean
                     }
                 },
-                createdAt: firestoreProfile.createdAt,
-                updatedAt: firestoreProfile.updatedAt,
+                createdAt: firestoreProfile.createdAt, // Keep existing if present
+                updatedAt: firestoreProfile.updatedAt, // Keep existing if present
             };
           } else {
-            console.log("AuthProvider: No Firestore profile for verified user", firebaseUser.uid, ". Constructing default in-memory profile.");
+            // Construct default profile if none exists in Firestore
             effectiveProfile = {
               name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
               email: firebaseUser.email || '', 
-              avatarUrl: firebaseUser.photoURL || `https://placehold.co/150x150.png?text=${(firebaseUser.displayName || firebaseUser.email || 'U').charAt(0).toUpperCase()}`,
+              avatarUrl: firebaseUser.photoURL,
               preferences: {
                 defaultVehiclePlate: '',
                 defaultVehicleMake: '',
@@ -217,49 +289,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     promotionalEmails: false,
                 }
               },
-              // createdAt and updatedAt will be undefined for this default in-memory profile
+              // createdAt and updatedAt will be undefined for this default profile
+              // and will be set upon first save or if Google sign-in creates it.
             };
           }
-          console.log("AuthProvider: Effective profile for", firebaseUser.uid, "is:", effectiveProfile);
           setUser({
               ...firebaseUser, 
               profile: effectiveProfile
           });
         } else {
-          console.log("AuthProvider: User email NOT verified for", firebaseUser.uid);
-          if (!pathname.startsWith('/login') && !pathname.startsWith('/signup') && !pathname.startsWith('/reset-password') && !pathname.startsWith('/forgot-password')  && !pathname.startsWith('/email-verification-sent')) {
+          if (!pathname.startsWith('/login') && !pathname.startsWith('/signup') && !pathname.startsWith('/reset-password') && !pathname.startsWith('/forgot-password') && !pathname.startsWith('/email-verification-sent')) {
             toast({ title: "Email Verification Required", description: "Please check your email to verify your account before logging in.", variant: "destructive", duration: 7000 });
           }
           setUser(null);
         }
       } else {
-        console.log("AuthProvider: No FirebaseUser.");
         setUser(null);
       }
       setLoading(false);
     });
-    return () => {
-        console.log("AuthProvider: Unsubscribing from onAuthStateChanged.");
-        unsubscribe();
-    }
-  }, [fetchUserProfileData, pathname, router, searchParams]);
+    return () => unsubscribe();
+  }, [fetchUserProfileData, pathname, searchParams]);
 
   const loginWithEmail = async (email: string, password: string) => {
     if (!firebaseInitialized || !auth || !db) {
       toast({ title: "Login Failed", description: "Auth service unavailable. Please check `src/lib/firebase.ts` and your Firebase project setup.", variant: "destructive" });
-      console.error("loginWithEmail: Firebase services not ready.", { firebaseInitialized, isAuthNull: auth === null, isDbNull: db === null, error: firebaseInitializationError?.message });
-      if (auth && auth.app) console.log("Auth App options at loginWithEmail attempt when service thought unavailable:", JSON.parse(JSON.stringify(auth.app.options)));
       return;
     }
-    console.log("loginWithEmail: Attempting login for", email);
-    if (auth && auth.app) {
-        console.log("loginWithEmail: Auth App options before signInWithEmailAndPassword:", JSON.parse(JSON.stringify(auth.app.options)));
-    } else {
-        console.error("loginWithEmail: Auth object or auth.app is null/undefined before signInWithEmailAndPassword.");
-        toast({ title: "Login Failed", description: "Firebase auth configuration not fully loaded.", variant: "destructive" });
-        return;
-    }
-
     setLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -277,7 +333,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
       const redirectParam = searchParams.get('redirect');
-      toast({ title: "Login Successful", description: `Welcome back, ${userCredential.user.displayName || 'User'}!` });
+      toast({ title: "Login Successful", description: `Welcome back!` });
       router.push(redirectParam || '/dashboard');
     } catch (error: any) {
       console.error("Email login error:", error);
@@ -320,87 +376,62 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const loginWithGoogle = async () => {
     if (!firebaseInitialized || !auth || !db) {
       toast({ title: "Google Login Failed", description: "Auth service unavailable. Please check `src/lib/firebase.ts` and your Firebase project setup.", variant: "destructive" });
-      console.error("loginWithGoogle: Firebase services not ready.", { firebaseInitialized, isAuthNull: auth === null, isDbNull: db === null, error: firebaseInitializationError?.message });
-      if (auth && auth.app) console.log("Auth App options at loginWithGoogle attempt when service thought unavailable:", JSON.parse(JSON.stringify(auth.app.options)));
       return;
     }
-    console.log("loginWithGoogle: Attempting Google Sign-In.");
-     if (auth && auth.app) {
-        console.log("loginWithGoogle: Auth App options before signInWithPopup:", JSON.parse(JSON.stringify(auth.app.options)));
-    } else {
-        console.error("loginWithGoogle: Auth object or auth.app is null/undefined before signInWithPopup.");
-        toast({ title: "Google Login Failed", description: "Firebase auth configuration not fully loaded.", variant: "destructive" });
-        return;
-    }
-
     setLoading(true);
     const provider = new GoogleAuthProvider();
     try {
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
-      console.log("loginWithGoogle: User signed in:", firebaseUser.uid, firebaseUser.displayName, firebaseUser.email);
-
       const userDocRef = doc(db, 'users', firebaseUser.uid);
       const userDocSnap = await getDoc(userDocRef);
 
       let userProfileUpdates: Partial<UserProfile> = {};
-      let isNewUserInFirestore = false;
+      const now = serverTimestamp() as Timestamp;
 
       if (!userDocSnap.exists()) {
-        isNewUserInFirestore = true;
-        console.log("loginWithGoogle: New user via Google. Creating Firestore profile for:", firebaseUser.uid);
+        console.log("loginWithGoogle: New user. Creating Firestore profile for:", firebaseUser.uid);
         userProfileUpdates = {
           name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
           email: firebaseUser.email || '',
-          avatarUrl: firebaseUser.photoURL || `https://placehold.co/150x150.png?text=${(firebaseUser.displayName || firebaseUser.email || 'G')[0].toUpperCase()}`,
-          createdAt: serverTimestamp() as Timestamp,
-          updatedAt: serverTimestamp() as Timestamp,
+          avatarUrl: firebaseUser.photoURL,
+          createdAt: now,
+          updatedAt: now,
           preferences: { 
-            defaultVehiclePlate: '', 
-            defaultVehicleMake: '',
-            defaultVehicleModel: '',
-            defaultVehicleColor: '',
-            requireCovered: false, 
-            requireEVCharging: false,
+            defaultVehiclePlate: '', defaultVehicleMake: '', defaultVehicleModel: '', defaultVehicleColor: '',
+            requireCovered: false, requireEVCharging: false,
             communication: { bookingEmails: true, promotionalEmails: false } 
           }
         };
         await setDoc(userDocRef, userProfileUpdates);
-        console.log("loginWithGoogle: Firestore profile created for new user:", firebaseUser.uid);
       } else {
-        console.log("loginWithGoogle: Existing user via Google. Checking for Firestore profile updates for:", firebaseUser.uid);
         const existingProfile = userDocSnap.data() as UserProfile;
-        let needsUpdate = false;
+        let needsFirestoreUpdate = false;
+        const updatesForFirestore: Partial<UserProfile> = {};
 
         if (firebaseUser.displayName && firebaseUser.displayName !== existingProfile.name) {
-            userProfileUpdates.name = firebaseUser.displayName;
-            needsUpdate = true;
+            updatesForFirestore.name = firebaseUser.displayName;
+            needsFirestoreUpdate = true;
         }
         if (firebaseUser.photoURL && firebaseUser.photoURL !== existingProfile.avatarUrl) {
-            userProfileUpdates.avatarUrl = firebaseUser.photoURL;
-            needsUpdate = true;
+            updatesForFirestore.avatarUrl = firebaseUser.photoURL;
+            needsFirestoreUpdate = true;
         }
         if (firebaseUser.email && firebaseUser.email !== existingProfile.email) {
-            // Note: Email updates in Firestore profile might be useful if primary email changes.
-            // However, Firebase Auth email is the source of truth for authentication.
-            userProfileUpdates.email = firebaseUser.email;
-            needsUpdate = true;
+            updatesForFirestore.email = firebaseUser.email;
+            needsFirestoreUpdate = true;
         }
-
-        if (needsUpdate) {
-            userProfileUpdates.updatedAt = serverTimestamp() as Timestamp;
-            console.log("loginWithGoogle: Updating existing user profile in Firestore with:", userProfileUpdates);
-            await updateDoc(userDocRef, userProfileUpdates);
+        if (needsFirestoreUpdate) {
+            updatesForFirestore.updatedAt = now;
+            console.log("loginWithGoogle: Existing user. Updating Firestore profile for:", firebaseUser.uid, "with:", updatesForFirestore);
+            await updateDoc(userDocRef, updatesForFirestore);
         } else {
-            console.log("loginWithGoogle: No Firestore profile updates needed for existing user:", firebaseUser.uid);
+             console.log("loginWithGoogle: Existing user. No Firestore profile updates needed for:", firebaseUser.uid);
         }
       }
       
-      // The onAuthStateChanged listener will pick up the user and set the local state.
-      // We might not need to call fetchUserProfileData here explicitly if onAuthStateChanged is robust enough.
-      
       const redirectParam = searchParams.get('redirect');
-      toast({ title: "Google Login Successful", description: `Welcome, ${firebaseUser.displayName || 'User'}!` });
+      toast({ title: "Google Login Successful", description: `Welcome!` });
       router.push(redirectParam || '/dashboard');
 
     } catch (error: any) {
@@ -420,7 +451,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           description = "Google Sign-In popup was blocked by the browser. Please allow popups for this site and try again.";
           break;
         case 'auth/configuration-not-found':
-        case 'auth/operation-not-allowed': // Google sign-in might also return this if not enabled
+        case 'auth/operation-not-allowed':
           description = "Google Sign-In is not configured correctly for this app. Please ensure it's enabled in your Firebase project console (Authentication -> Sign-in method) and that your project's OAuth settings are correctly set up in Google Cloud Console.";
           break;
         case 'auth/unauthorized-domain':
@@ -442,24 +473,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
  const signupWithEmail = async (name: string, email: string, password: string) => {
     if (!firebaseInitialized || !auth || !db) {
       toast({ title: "Signup Failed", description: "Auth service unavailable. Please verify Firebase configuration in `src/lib/firebase.ts` and your Firebase project setup.", variant: "destructive" });
-      console.error("signupWithEmail: Auth service unavailable or Firebase not initialized properly.", {
-        firebaseInitialized,
-        isAuthNull: auth === null,
-        isDbNull: db === null,
-        initError: firebaseInitializationError ? firebaseInitializationError.message : "No init error"
-      });
-      if (auth && auth.app) console.log("Auth App options at signupWithEmail attempt when service thought unavailable:", JSON.parse(JSON.stringify(auth.app.options)));
       return;
     }
 
-    console.log("signupWithEmail: Attempting signup for", email);
     if (auth && auth.app && auth.app.options) {
-        console.log("signupWithEmail: Auth App options before createUserWithEmailAndPassword:", JSON.parse(JSON.stringify(auth.app.options)));
          if (!auth.app.options.apiKey) {
-            console.error("CRITICAL: auth.app.options.apiKey is missing right before createUserWithEmailAndPassword!", {
-                authOptions: JSON.parse(JSON.stringify(auth.app.options)),
-                firebaseInitialized
-            });
+            console.error("CRITICAL: auth.app.options.apiKey is missing right before createUserWithEmailAndPassword!");
             toast({ title: "Configuration Error", description: "Firebase API key configuration is missing internally. Check `src/lib/firebase.ts` and ensure Firebase project is correctly set up.", variant: "destructive" });
             setLoading(false);
             return;
@@ -476,21 +495,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const firebaseUser = userCredential.user;
 
-      await updateFirebaseProfile(firebaseUser, { displayName: name, photoURL: `https://placehold.co/150x150.png?text=${name[0].toUpperCase()}` });
+      await updateFirebaseProfile(firebaseUser, { displayName: name });
 
+      const now = serverTimestamp() as Timestamp;
       const userProfileData: UserProfile = {
         name: name,
         email: firebaseUser.email || '',
-        avatarUrl: firebaseUser.photoURL || `https://placehold.co/150x150.png?text=${name[0].toUpperCase()}`,
-        createdAt: serverTimestamp() as Timestamp,
-        updatedAt: serverTimestamp() as Timestamp,
+        avatarUrl: firebaseUser.photoURL, // Will be null initially
+        createdAt: now,
+        updatedAt: now,
         preferences: { 
-            defaultVehiclePlate: '', 
-            defaultVehicleMake: '',
-            defaultVehicleModel: '',
-            defaultVehicleColor: '',
-            requireCovered: false, 
-            requireEVCharging: false,
+            defaultVehiclePlate: '', defaultVehicleMake: '', defaultVehicleModel: '', defaultVehicleColor: '',
+            requireCovered: false, requireEVCharging: false,
             communication: { bookingEmails: true, promotionalEmails: false } 
         }
       };
@@ -503,7 +519,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUser(null);
       router.push('/login?message=verification-sent');
     } catch (error: any) {
-      console.error("Signup attempt failed. Raw error:", error);
       let description = "Could not create account.";
       switch(error.code) {
         case 'auth/email-already-in-use':
@@ -544,8 +559,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = async () => {
     if (!firebaseInitialized || !auth) {
       toast({ title: "Logout Failed", description: "Auth service unavailable. Check `src/lib/firebase.ts`.", variant: "destructive" });
-      console.error("logout: Firebase services not ready.", { firebaseInitialized, isAuthNull: auth === null, error: firebaseInitializationError?.message });
-      if (auth && auth.app) console.log("Auth App options at logout attempt:", JSON.parse(JSON.stringify(auth.app.options)));
       return;
     }
     setLoading(true);
@@ -555,7 +568,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       router.push('/login');
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
     } catch (error: any) {
-      console.error("Logout error:", error);
       toast({ title: "Logout Failed", description: error.message || "An unexpected error occurred.", variant: "destructive" });
     } finally {
       setLoading(false);
@@ -565,18 +577,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const sendPasswordResetEmailHandler = async (emailAddress: string) => {
     if (!firebaseInitialized || !auth) {
       toast({ title: "Error", description: "Password reset service not ready. Check `src/lib/firebase.ts`.", variant: "destructive" });
-      console.error("sendPasswordResetEmailHandler: Firebase services not ready.", { firebaseInitialized, isAuthNull: auth === null, error: firebaseInitializationError?.message });
-      if (auth && auth.app) console.log("Auth App options at sendPasswordResetEmailHandler attempt:", JSON.parse(JSON.stringify(auth.app.options)));
       return;
     }
     setLoading(true);
     try {
       await firebaseSendPasswordResetEmail(auth, emailAddress);
       toast({ title: "Password Reset Email Sent", description: "If an account exists for this email, a reset link has been sent." });
-    } catch (error: any) {
-      console.error("Password reset email error:", error);
+    } catch (error: any)
+     {
       let description = "Could not send reset email.";
-      if (error.code === 'auth/user-not-found') {
+       if (error.code === 'auth/user-not-found') {
         description = "No account found with this email address.";
       } else if (error.code === 'auth/configuration-not-found') {
         description = "Firebase configuration error for password reset. Check `src/lib/firebase.ts` and Firebase console settings.";
@@ -594,8 +604,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const confirmPasswordResetHandler = async (code: string, newPassword: string) => {
     if (!firebaseInitialized || !auth) {
       toast({ title: "Error", description: "Password reset service not ready. Check `src/lib/firebase.ts`.", variant: "destructive" });
-      console.error("confirmPasswordResetHandler: Firebase services not ready.", { firebaseInitialized, isAuthNull: auth === null, error: firebaseInitializationError?.message });
-      if (auth && auth.app) console.log("Auth App options at confirmPasswordResetHandler attempt:", JSON.parse(JSON.stringify(auth.app.options)));
       return;
     }
     setLoading(true);
@@ -604,7 +612,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       toast({ title: "Password Reset Successful", description: "You can now login with your new password." });
       router.push('/login');
     } catch (error: any) {
-      console.error("Confirm password reset error:", error);
       let description = "Failed to reset password.";
       if (error.code === 'auth/invalid-action-code') {
         description = "The password reset link is invalid or has expired. Please request a new one.";
