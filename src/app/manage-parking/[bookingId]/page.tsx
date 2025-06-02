@@ -5,11 +5,16 @@ import { ManageParkingClientContent } from '@/components/booking/ManageParkingCl
 import type { Booking } from '@/types'; // For mockBookingsForStaticParams type
 
 // Mock data needed for generateStaticParams.
-// These IDs should match what fetchBookingAndSpaceDetails in the client component can find.
+// These IDs should match what the dashboard overview links to (e.g., b1, b2)
+// and what fetchBookingAndSpaceDetails in the client component can find.
 const mockBookingsForStaticParams: Pick<Booking, 'id'>[] = [
-  { id: 'bk_active1' },
-  { id: 'bk_upcoming1' },
-  // Add other specific booking IDs you want to pre-render if necessary
+  { id: 'b1' }, // From dashboard overview mock
+  { id: 'b2' }, // From dashboard overview mock
+  // Add other specific booking IDs you want to pre-render if necessary,
+  // e.g., if other parts of the app link to specific mock booking IDs.
+  // For now, focusing on dashboard links.
+  // { id: 'bk_active1' }, // Example if these were used elsewhere
+  // { id: 'bk_upcoming1' },
 ];
 
 export async function generateStaticParams() {

@@ -1,7 +1,7 @@
 
 "use client";
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation'; // useParams is fine here if you prefer, or use prop
+import { useRouter } from 'next/navigation';
 import { Header } from '@/components/core/Header';
 import { Footer } from '@/components/core/Footer';
 import { PageTitle } from '@/components/core/PageTitle';
@@ -33,10 +33,14 @@ const fetchBookingAndSpaceDetails = async (bookingId: string): Promise<{ booking
   await new Promise(resolve => setTimeout(resolve, 1000));
   
   const mockBookings: Booking[] = [
-    { id: 'bk_active1', spaceId: 'ps1', facilityName: 'City Center Parking', facilityAddress: '123 Main St, Anytown', startTime: new Date(Date.now() - 3600000).toISOString(), endTime: new Date(Date.now() + 3600000 * 2).toISOString(), totalCost: 7.50, status: 'active', vehiclePlate: 'ACT 001' },
-    { id: 'bk_upcoming1', spaceId: 'ps2', facilityName: 'Downtown Garage', facilityAddress: '456 Oak Ave, Anytown', startTime: new Date(Date.now() + 3600000 * 1).toISOString(), endTime: new Date(Date.now() + 3600000 * 3).toISOString(), totalCost: 9.00, status: 'upcoming', vehiclePlate: 'UPC 002' },
+    // Match the IDs from dashboard overview page
+    { id: 'b1', spaceId: 'ps1', facilityName: 'City Center Parking', facilityAddress: '123 Main St, Anytown', startTime: new Date(Date.now() + 3600000).toISOString(), endTime: new Date(Date.now() + 7200000).toISOString(), totalCost: 5.00, status: 'upcoming', vehiclePlate: 'XYZ 123' },
+    { id: 'b2', spaceId: 'ps2', facilityName: 'Downtown Garage', facilityAddress: '456 Oak Ave, Metropolis', startTime: new Date(Date.now() - 3600000).toISOString(), endTime: new Date(Date.now() + 3600000).toISOString(), totalCost: 9.00, status: 'active', vehiclePlate: 'ABC 789' },
+    // Keep other examples if needed for direct navigation or other tests
+    { id: 'bk_active1', spaceId: 'ps1', facilityName: 'City Center Parking (bk_active1)', facilityAddress: '123 Main St, Anytown', startTime: new Date(Date.now() - 3600000).toISOString(), endTime: new Date(Date.now() + 3600000 * 2).toISOString(), totalCost: 7.50, status: 'active', vehiclePlate: 'ACT 001' },
+    { id: 'bk_upcoming1', spaceId: 'ps2', facilityName: 'Downtown Garage (bk_upcoming1)', facilityAddress: '456 Oak Ave, Anytown', startTime: new Date(Date.now() + 3600000 * 1).toISOString(), endTime: new Date(Date.now() + 3600000 * 3).toISOString(), totalCost: 9.00, status: 'upcoming', vehiclePlate: 'UPC 002' },
   ];
-  const mockSpaces: ParkingSpace[] = [ // Ensure these match the ParkingSpace interface fully
+  const mockSpaces: ParkingSpace[] = [
     { id: 'ps1', slotLabel: 'A1', floorLevel: 'P1', isOccupied: false, slotType: 'standard', facilityName: 'City Center Parking', facilityAddress: '123 Main St, Anytown', availability: 'medium', pricePerHour: 2.5, features: ['covered', 'ev-charging'], facilityCoordinates: { lat: 0, lng: 0 }, imageUrl: 'https://placehold.co/600x400.png', dataAiHint: 'garage interior', facilityRating: 4.2, totalSpots: 100, availableSpots: 50},
     { id: 'ps2', slotLabel: 'B5', floorLevel: 'P2', isOccupied: true, slotType: 'ev-charging', facilityName: 'Downtown Garage', facilityAddress: '456 Oak Ave, Anytown', availability: 'high', pricePerHour: 3.0, features: ['secure'], facilityCoordinates: { lat: 0, lng: 0 }, imageUrl: 'https://placehold.co/600x400.png', dataAiHint: 'underground parking', facilityRating: 4.0, totalSpots: 80, availableSpots: 30},
   ];
@@ -87,6 +91,8 @@ export function ManageParkingClientContent({ bookingIdFromParams }: ManageParkin
           setTimeRemaining({ hours: 0, minutes: 0, seconds: 0 });
           setProgress(100);
           clearInterval(timer);
+          // Optionally, update booking status to 'completed' here
+          // setBooking(prev => prev ? ({ ...prev, status: 'completed'}) : null);
           return;
         }
         
@@ -105,6 +111,9 @@ export function ManageParkingClientContent({ bookingIdFromParams }: ManageParkin
         const now = new Date();
         if (now < startTime) {
             setTimeRemaining(intervalToDuration({ start: now, end: startTime }));
+        } else if (now >= startTime && booking.endTime && now < new Date(booking.endTime)) {
+            // If it just became active
+            setBooking(prev => prev ? ({ ...prev, status: 'active'}) : null);
         }
         setProgress(0);
     }
@@ -114,20 +123,27 @@ export function ManageParkingClientContent({ bookingIdFromParams }: ManageParkin
   const handleExtendParking = async (newEndTime: Date, additionalCost: number, extendDuration: number) => {
     if (!booking || !space) return;
     console.log(`Extending booking ${booking.id} by ${extendDuration} hours. New end time: ${newEndTime}, Additional cost: $${additionalCost.toFixed(2)}`);
+    // Simulate API call
+    setIsLoading(true);
     await new Promise(resolve => setTimeout(resolve, 1500));
     setBooking(prev => prev ? ({ ...prev, endTime: newEndTime.toISOString(), totalCost: prev.totalCost + additionalCost }) : null);
     toast({ title: "Parking Extended", description: `Your parking session now ends at ${format(newEndTime, "p")}.` });
+    setIsLoading(false);
   };
 
   const handleCancelBooking = async () => {
     if(!booking) return;
+    setIsLoading(true);
+    // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000));
     setBooking(prev => prev ? ({...prev, status: 'cancelled'}) : null);
     toast({title: "Booking Cancelled", description: `Your booking for ${space?.facilityName} has been cancelled.`});
+    setIsLoading(false);
+    // router.push('/dashboard/bookings'); // Optionally redirect
   };
 
 
-  if (isLoading) {
+  if (isLoading && !booking) { // Show loader only on initial load or during operations
     return <div className="flex h-screen items-center justify-center"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
   }
 
@@ -136,7 +152,7 @@ export function ManageParkingClientContent({ bookingIdFromParams }: ManageParkin
       <div className="flex flex-col min-h-screen">
         <Header />
         <main className="flex-grow container mx-auto px-4 md:px-6 py-8 text-center">
-          <PageTitle title="Booking Not Found" description="The requested booking could not be found." />
+          <PageTitle title="Booking Not Found" description="The requested booking could not be found or details are missing." />
           <Button onClick={() => router.push('/dashboard/bookings')}>View My Bookings</Button>
         </main>
         <Footer />
@@ -144,8 +160,8 @@ export function ManageParkingClientContent({ bookingIdFromParams }: ManageParkin
     );
   }
   
-  const isCancellable = booking.status === 'upcoming' && differenceInMinutes(new Date(booking.startTime), new Date()) > 60; 
-  const canExtend = booking.status === 'active' || (booking.status === 'upcoming' && differenceInMinutes(new Date(booking.startTime), new Date()) < 60*2 ); 
+  const isCancellable = booking.status === 'upcoming' && differenceInMinutes(new Date(booking.startTime), new Date()) > 60; // e.g., cancellable if more than 1 hour before start
+  const canExtend = (booking.status === 'active' || (booking.status === 'upcoming' && differenceInMinutes(new Date(booking.startTime), new Date()) < 60*2 )) && space.pricePerHour !== undefined;
   
   return (
     <div className="flex flex-col min-h-screen">
@@ -180,6 +196,7 @@ export function ManageParkingClientContent({ bookingIdFromParams }: ManageParkin
                       {String(timeRemaining.seconds || 0).padStart(2, '0')}
                     </div>
                     <Progress value={progress} className="w-full h-3" />
+                     {isLoading && <p className="text-xs text-center text-muted-foreground mt-1">Updating session...</p>}
                   </div>
                 )}
                 {booking.status === 'upcoming' && timeRemaining && (
@@ -191,6 +208,7 @@ export function ManageParkingClientContent({ bookingIdFromParams }: ManageParkin
                             {String(timeRemaining.minutes || 0).padStart(2, '0')}:
                             {String(timeRemaining.seconds || 0).padStart(2, '0')}
                         </div>
+                         {isLoading && <p className="text-xs text-center text-muted-foreground mt-1">Updating status...</p>}
                     </div>
                 )}
                 {booking.status === 'completed' && <p className="pt-4 text-green-500 font-semibold text-center">This parking session has ended.</p>}
@@ -218,13 +236,13 @@ export function ManageParkingClientContent({ bookingIdFromParams }: ManageParkin
                 )}
               </CardContent>
               <CardFooter className="flex flex-col sm:flex-row gap-2">
-                <Button className="w-full sm:w-auto" onClick={() => alert("Mock navigation to " + space.facilityAddress)}>
+                <Button className="w-full sm:w-auto" onClick={() => alert("Mock navigation to " + space.facilityAddress)} disabled={isLoading}>
                   <Navigation className="mr-2 h-4 w-4"/> Get Directions
                 </Button>
                 {isCancellable && (
                     <AlertDialog>
                         <AlertDialogTrigger asChild>
-                            <Button variant="destructive" className="w-full sm:w-auto">Cancel Booking</Button>
+                            <Button variant="destructive" className="w-full sm:w-auto" disabled={isLoading}>Cancel Booking</Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                             <AlertDialogHeader><AlertDialogTitle>Confirm Cancellation</AlertDialogTitle><AlertDialogDescription>Are you sure you want to cancel this booking? This action might be irreversible depending on the cancellation policy.</AlertDialogDescription></AlertDialogHeader>
@@ -237,14 +255,14 @@ export function ManageParkingClientContent({ bookingIdFromParams }: ManageParkin
           </div>
           
           <div className="lg:col-span-5">
-            {canExtend && space.pricePerHour !== undefined && (
+            {canExtend && (
               <Card className="shadow-xl sticky top-24">
                 <CardHeader>
                   <CardTitle className="text-xl flex items-center"><Timer className="mr-2 h-5 w-5 text-accent icon-glow" /> Extend Parking Time</CardTitle>
                   <CardDescription>Need more time? Extend your session easily.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ExtendParkingForm currentBooking={booking} pricePerHour={space.pricePerHour} onExtend={handleExtendParking} />
+                  <ExtendParkingForm currentBooking={booking} pricePerHour={space.pricePerHour!} onExtend={handleExtendParking} />
                 </CardContent>
               </Card>
             )}
@@ -262,7 +280,7 @@ export function ManageParkingClientContent({ bookingIdFromParams }: ManageParkin
                 </Card>
             )}
             {/* Case where extension is not possible due to missing pricePerHour */}
-            {canExtend && space.pricePerHour === undefined && (
+            {(booking.status === 'active' || (booking.status === 'upcoming' && differenceInMinutes(new Date(booking.startTime), new Date()) < 60*2)) && space.pricePerHour === undefined && (
                 <Card className="shadow-xl text-center sticky top-24 bg-muted/50">
                     <CardHeader>
                         <CardTitle className="text-xl flex items-center"><Timer className="mr-2 h-5 w-5 text-muted-foreground" /> Extend Parking Time</CardTitle>
@@ -280,4 +298,3 @@ export function ManageParkingClientContent({ bookingIdFromParams }: ManageParkin
     </div>
   );
 }
-
