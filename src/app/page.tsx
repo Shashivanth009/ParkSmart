@@ -10,11 +10,11 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Search, MapPin, CalendarCheck, Clock, Star, ShieldCheck, Zap, Car, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
-import Image from 'next/image';
+import Image from 'next/image'; // Keep for other images if any, or remove if OpenLayersMap is the only "image" here
+import { OpenLayersMap } from '@/components/map/OpenLayersMap'; // Import the map component
 import type { ParkingSpace } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 
-// Removed mockFeaturedSpaces as the section using it is removed.
 
 export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -45,6 +45,18 @@ export default function HomePage() {
     router.push(navUrl);
   };
   
+  const handleHomePageMapClick = useCallback((coords: { lon: number, lat: number }) => {
+    // For the homepage map, perhaps navigate to search page with these coords or a general location
+    // For now, just focusing the search bar might be enough, or a toast message.
+    console.log("Homepage map clicked at Lon:", coords.lon, "Lat:", coords.lat);
+    const inputElement = document.querySelector('input[aria-label="Search for parking"]') as HTMLInputElement | null;
+    if (inputElement) {
+        inputElement.focus();
+        // Optionally set search query based on reverse geocoded location if implemented
+        // setSearchQuery(`Explore near ${coords.lat.toFixed(4)}, ${coords.lon.toFixed(4)}`);
+    }
+  }, []);
+
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -90,19 +102,17 @@ export default function HomePage() {
             <h2 className="text-3xl font-bold text-center mb-8 md:mb-12 text-foreground">
               Explore Parking Areas
             </h2>
-            <Card className="aspect-[16/6] bg-muted/30 flex items-center justify-center shadow-lg rounded-xl relative overflow-hidden">
-                <Image 
-                    src="https://placehold.co/1200x450.png" 
-                    alt="Map Area Placeholder"
-                    fill={true}
-                    className="object-cover"
-                    data-ai-hint="map illustration city"
-                    priority
+            <div className="aspect-[16/6] bg-muted/30 rounded-xl shadow-lg overflow-hidden relative">
+                <OpenLayersMap 
+                    centerCoordinates={[78.4867, 17.3850]} // Default to Hyderabad or a general overview
+                    zoomLevel={11} // Slightly more zoomed out for an overview
+                    onMapClick={handleHomePageMapClick}
+                    className="w-full h-full"
                 />
-                <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                    <p className="text-xl text-white/80 p-4 text-center">Interactive map feature is currently simplified. Search by location above.</p>
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 p-2 bg-background/70 rounded-md text-xs text-muted-foreground backdrop-blur-sm">
+                    Click on the map to explore or use the search above.
                 </div>
-            </Card>
+            </div>
             <div className="text-center mt-8">
               <Button size="lg" onClick={() => document.querySelector('input[aria-label="Search for parking"]')?.focus()}>
                 Search Locations
@@ -167,7 +177,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Featured Parking Locations section removed */}
       </main>
       <Footer />
     </div>
