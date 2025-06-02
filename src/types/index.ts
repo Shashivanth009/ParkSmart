@@ -5,69 +5,69 @@ import type { Timestamp } from 'firebase/firestore';
 
 // Represents an individual parking slot with facility context
 export interface ParkingSpace {
-  id: string; 
-  slotLabel: string; 
-  floorLevel: string; 
+  id: string;
+  slotLabel: string;
+  floorLevel: string;
   isOccupied: boolean;
-  vehicleIdOccupying?: string; 
-  occupiedSince?: string; 
+  vehicleIdOccupying?: string;
+  occupiedSince?: string;
   slotType: 'standard' | 'accessible' | 'ev-charging';
 
-  facilityName: string; 
-  facilityAddress: string; 
-  facilityCoordinates: { lat: number; lng: number }; 
-  pricePerHour?: number; 
-  
-  imageUrl?: string; 
-  dataAiHint?: string; 
-  facilityRating?: number; 
+  facilityName: string;
+  facilityAddress: string;
+  facilityCoordinates: { lat: number; lng: number };
+  pricePerHour?: number;
 
-  availability?: 'high' | 'medium' | 'low' | 'full'; 
-  features?: ParkingFeature[]; 
-  totalSpots?: number; 
-  availableSpots?: number; 
+  imageUrl?: string;
+  dataAiHint?: string;
+  facilityRating?: number;
+
+  availability?: 'high' | 'medium' | 'low' | 'full';
+  features?: ParkingFeature[];
+  totalSpots?: number;
+  availableSpots?: number;
 }
 
 
 export interface Booking {
   id: string;
-  spaceId: string; 
+  spaceId: string;
   spaceName: string;
   spaceAddress: string;
-  startTime: string; 
-  endTime: string; 
+  startTime: string;
+  endTime: string;
   totalCost: number;
   status: 'upcoming' | 'active' | 'completed' | 'cancelled';
   vehiclePlate?: string;
 }
 
 export interface UserProfile {
-  name: string;
-  email: string; 
+  name: string; // Made non-optional, default will be provided
+  email: string; // Made non-optional, default will be provided
   phone?: string;
-  avatarUrl?: string | null; // Allow null for Firebase photoURL compatibility
+  avatarUrl?: string | null;
   preferences?: {
     defaultVehiclePlate?: string;
     requireCovered?: boolean;
     requireEVCharging?: boolean;
   };
-  createdAt?: Timestamp; // Firestore Timestamp for new docs
-  updatedAt?: Timestamp; // Firestore Timestamp for updates
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 export interface PaymentMethod {
   id: string;
   type: 'card' | 'upi' | 'wallet';
-  details: string; 
+  details: string;
   isDefault: boolean;
-  expiryDate?: string; 
+  expiryDate?: string;
 }
 
 export interface FavoriteLocation {
   id: string;
   name: string;
   address: string;
-  spaceId?: string; 
+  spaceId?: string;
   notes?: string;
 }
 
@@ -96,3 +96,4 @@ export const slotTypeIcons: Record<ParkingSpace['slotType'], LucideIcon> = {
     accessible: require('lucide-react').Accessibility,
     'ev-charging': require('lucide-react').Zap,
 };
+
