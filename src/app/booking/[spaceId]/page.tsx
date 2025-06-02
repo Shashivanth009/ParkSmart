@@ -15,15 +15,22 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
 
-const fetchSpaceDetails = async (spaceId: string): Promise<ParkingSpace | null> => {
-  console.log("Fetching details for space:", spaceId);
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  const mockSpaces: ParkingSpace[] = [
+const mockSpacesData: ParkingSpace[] = [
     { id: 'ps1', facilityName: 'City Center Parking', facilityAddress: '123 Main St, Anytown', availability: 'high', pricePerHour: 2.5, features: ['covered', 'ev-charging', 'cctv'], facilityCoordinates: { lat: 28.6139, lng: 77.2090 }, facilityRating: 4.5, availableSpots: 50, totalSpots: 100, imageUrl: 'https://placehold.co/800x450.png', slotLabel: 'N/A', floorLevel: 'N/A', isOccupied: false, slotType: 'standard', dataAiHint: "parking garage entrance"},
     { id: 'ps2', facilityName: 'Downtown Garage', facilityAddress: '456 Oak Ave, Anytown', availability: 'medium', pricePerHour: 3.0, features: ['cctv', 'secure'], facilityCoordinates: { lat: 28.6150, lng: 77.2100 }, facilityRating: 4.2, availableSpots: 20, totalSpots: 80, imageUrl: 'https://placehold.co/800x450.png', slotLabel: 'N/A', floorLevel: 'N/A', isOccupied: false, slotType: 'standard', dataAiHint: "modern parking structure" },
-  ];
-  return mockSpaces.find(s => s.id === spaceId) || null;
+];
+
+export async function generateStaticParams() {
+  return mockSpacesData.map((space) => ({
+    spaceId: space.id,
+  }));
+}
+
+const fetchSpaceDetails = async (spaceId: string): Promise<ParkingSpace | null> => {
+  console.log("Fetching details for space:", spaceId);
+  // Simulate API delay if needed for testing loaders, otherwise remove for static
+  // await new Promise(resolve => setTimeout(resolve, 1000)); 
+  return mockSpacesData.find(s => s.id === spaceId) || null;
 };
 
 const FeatureDisplay = ({ feature }: { feature: ParkingFeature }) => {
@@ -55,7 +62,7 @@ export default function BookingPage() {
       return;
     }
 
-    if (isAuthenticated && spaceId) { // Only fetch if authenticated and spaceId exists
+    if (isAuthenticated && spaceId) { 
       setIsLoading(true);
       fetchSpaceDetails(spaceId)
         .then(data => {
@@ -67,7 +74,7 @@ export default function BookingPage() {
         }).finally(() => {
             setIsLoading(false);
         });
-    } else if (!spaceId) { // If no spaceId, stop loading
+    } else if (!spaceId) { 
         setIsLoading(false);
         toast({title: "Invalid Space", description: "No parking space ID provided.", variant: "destructive"});
         router.push('/search');
@@ -99,7 +106,7 @@ export default function BookingPage() {
     );
   }
 
-  if (!isAuthenticated) { // Should be caught by useEffect, but as a fallback
+  if (!isAuthenticated) { 
      return (
       <div className="flex flex-col min-h-screen">
         <Header />
@@ -141,7 +148,7 @@ export default function BookingPage() {
             <Card className="shadow-xl overflow-hidden">
               {space.imageUrl && (
                 <div className="relative w-full h-64 md:h-80">
-                  <Image src={space.imageUrl} alt={space.facilityName || "Parking space image"} layout="fill" objectFit="cover" data-ai-hint={space.dataAiHint || "parking garage entrance"} priority/>
+                  <Image src={space.imageUrl} alt={space.facilityName || "Parking space image"} fill={true} className="object-cover" data-ai-hint={space.dataAiHint || "parking garage entrance"} priority/>
                 </div>
               )}
               <CardHeader>
@@ -186,3 +193,5 @@ export default function BookingPage() {
     </div>
   );
 }
+
+    
