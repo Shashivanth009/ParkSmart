@@ -1,4 +1,4 @@
-
+@import 'ol/ol.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -88,3 +88,31 @@ body {
   filter: drop-shadow(0 0 3px hsl(var(--primary) / 0.6));
 }
 
+/* OpenLayers map specific styles */
+.ol-viewport, .ol-unselectable {
+  border-radius: 0.5rem; /* Match ShadCN's default border radius */
+}
+.ol-control button {
+  background-color: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+}
+.ol-control button:hover {
+  background-color: hsl(var(--muted)) !important;
+}
+.ol-zoom .ol-zoom-in, .ol-zoom .ol-zoom-out {
+  font-size: 1.25em !important; /* Make icons a bit larger */
+}
+.ol-attribution {
+  background: hsl(var(--background) / 0.7) !important;
+  padding: 2px 6px !important;
+  border-radius: var(--radius) 0 0 0 !important;
+}
+.ol-attribution a {
+  color: hsl(var(--primary)) !important;
+}
+.ol-attribution ul {
+  color: hsl(var(--foreground)) !important;
+  font-size: 0.65rem !important;
+}
