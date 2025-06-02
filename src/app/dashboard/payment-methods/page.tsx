@@ -240,6 +240,28 @@ function PaymentMethodFormDialog({ title, description, paymentMethod, onSave, on
   }, [paymentMethod, isOnlyMethod]);
 
 
+  const handleExpiryDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value.replace(/\D/g, ''); // Remove non-digits
+    if (value.length > 4) {
+      value = value.slice(0, 4); // MMYY format
+    }
+
+    if (value.length >= 2 && expiryDate.length < value.length && value.indexOf('/') === -1) {
+        // Add / if two digits entered and no / present and user is typing forward
+        if (value.length > 2) {
+             value = value.slice(0, 2) + '/' + value.slice(2);
+        } else if (value.length === 2) {
+             value = value + '/';
+        }
+    } else if (value.length === 2 && expiryDate.length > value.length && expiryDate.endsWith('/')) {
+        // Handle backspace when format is MM/
+        value = value.slice(0,1);
+    }
+    
+    setExpiryDate(value);
+  };
+
+
   const handleSubmit = () => {
     const dataToSave: PaymentMethodFormData = {
         type,
@@ -258,8 +280,15 @@ function PaymentMethodFormDialog({ title, description, paymentMethod, onSave, on
         if (!actualCardNumber || !/^\d{12}$/.test(actualCardNumber)) {
             toast({ title: "Validation Error", description: "Card number must be exactly 12 digits.", variant: "destructive" }); return;
         }
-        if (!expiryDate || !/^(0[1-9]|1[0-2])\/\d{2}$/.test(expiryDate)) {
-            toast({ title: "Validation Error", description: "Expiry date must be in MM/YY format.", variant: "destructive" }); return;
+        if (!expiryDate || !/^(0[1-9]|1[0-2])\/\d{2}$/.test(expiryDate)) { // MM/YY format, validates month 01-12
+            const currentYearLastTwoDigits = new Date().getFullYear() % 100;
+            const inputYear = parseInt(expiryDate.slice(3), 10);
+            const inputMonth = parseInt(expiryDate.slice(0,2), 10);
+
+            if (inputYear < currentYearLastTwoDigits || (inputYear === currentYearLastTwoDigits && inputMonth < new Date().getMonth() + 1)) {
+                 toast({ title: "Validation Error", description: "Expiry date cannot be in the past.", variant: "destructive" }); return;
+            }
+            toast({ title: "Validation Error", description: "Expiry date must be in MM/YY format and valid.", variant: "destructive" }); return;
         }
         if (!cvv || !/^\d{3}$/.test(cvv)) {
             toast({ title: "Validation Error", description: "CVV must be exactly 3 digits.", variant: "destructive" }); return;
@@ -300,7 +329,14 @@ function PaymentMethodFormDialog({ title, description, paymentMethod, onSave, on
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="expiryDate" className="text-right col-span-1 text-sm">Expiry</Label>
-                <Input id="expiryDate" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className="col-span-3" placeholder="MM/YY" maxLength={5} />
+                <Input 
+                    id="expiryDate" 
+                    value={expiryDate} 
+                    onChange={handleExpiryDateChange} 
+                    className="col-span-3" 
+                    placeholder="MM/YY" 
+                    maxLength={5} 
+                />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="cvv" className="text-right col-span-1 text-sm">CVV</Label>
@@ -334,5 +370,7 @@ function PaymentMethodFormDialog({ title, description, paymentMethod, onSave, on
     </DialogContent>
   );
 }
+
+    
 
     
