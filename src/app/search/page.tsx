@@ -21,7 +21,7 @@ import { toast } from '@/hooks/use-toast';
 const DEFAULT_FILTERS: ParkingFilters = {
   priceRange: [0, 50] as [number, number],
   features: [] as ParkingFeature[],
-  distanceMax: 5, // default 5km
+  distanceMax: 5, 
   ratingMin: 0,
 };
 
@@ -43,9 +43,9 @@ function SearchPageComponent() {
   const [searchAttempted, setSearchAttempted] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-  // Map state
-  const [mapCenter, setMapCenter] = useState<[number, number]>([78.4867, 17.3850]); // Default to Hyderabad
+  const [mapCenter, setMapCenter] = useState<[number, number]>([78.4867, 17.3850]); 
   const [mapZoom, setMapZoom] = useState<number>(12);
+  const [mapMarkerPosition, setMapMarkerPosition] = useState<[number, number] | null>(null);
 
 
   useEffect(() => {
@@ -56,7 +56,7 @@ function SearchPageComponent() {
     const urlLocation = searchParams.get('location') || '';
     setSearchQuery(urlLocation);
     if (urlLocation) {
-      setSearchAttempted(true); // If location in URL, consider it an attempt
+      setSearchAttempted(true); 
     }
     setIsInitialLoad(false);
   }, [searchParams]); 
@@ -85,13 +85,14 @@ function SearchPageComponent() {
       setRawAiSpaces([]);
       setDisplayedSpaces([]);
       setIsLoading(false);
-      setAiSearchPerformed(true); // Mark as performed even if query is empty
+      setAiSearchPerformed(true); 
+      setMapMarkerPosition(null);
       toast({title: "Search Empty", description:"Please enter a location to search.", variant: "default"});
       return;
     }
 
     setIsLoading(true);
-    setAiSearchPerformed(true); // Set this at the beginning of an actual attempt
+    setAiSearchPerformed(true); 
     try {
       const searchInput: FindParkingInput = {
         locationName: locationQuery,
@@ -101,26 +102,33 @@ function SearchPageComponent() {
       const results = await findParkingSpots(searchInput);
       setRawAiSpaces(results);
       if (results.length > 0 && results[0].facilityCoordinates) {
-        setMapCenter([results[0].facilityCoordinates.lng, results[0].facilityCoordinates.lat]);
+        const firstResultCoords: [number, number] = [results[0].facilityCoordinates.lng, results[0].facilityCoordinates.lat];
+        setMapCenter(firstResultCoords);
+        setMapMarkerPosition(firstResultCoords);
         setMapZoom(14);
+      } else {
+         if (!locationQuery.startsWith("Map click:")) { // Clear marker if text search yields no results
+            setMapMarkerPosition(null);
+         }
+         // If it was a map click, marker is already set by handleMapClick, keep it.
+         // Keep current mapCenter or set to a default if no results from a map click? For now, keep as is.
       }
     } catch (error: any) {
       console.error("AI search failed:", error);
       toast({title: "AI Search Error", description: error.message || "Could not fetch parking spots.", variant: "destructive"});
       setRawAiSpaces([]);
+      setMapMarkerPosition(null); // Clear marker on error
     } finally {
       setIsLoading(false);
     }
   }, [isAuthenticated, authLoading, router, aiSearchUnavailable]);
 
 
-  // This useEffect triggers AI search based on state changes
   useEffect(() => {
     if (isInitialLoad || !searchAttempted || !searchQuery.trim()) return;
     if (aiSearchUnavailable) return;
 
     const locationToSearch = searchQuery.trim();
-    // Use userSetFilters if available, otherwise use default filters
     const filtersToUse = userSetFilters || DEFAULT_FILTERS;
     
     performAiSearch(
@@ -128,7 +136,8 @@ function SearchPageComponent() {
       filtersToUse.distanceMax,
       filtersToUse.features
     );
-  }, [userSetFilters, searchAttempted, isInitialLoad, aiSearchUnavailable, searchQuery, performAiSearch]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userSetFilters, searchAttempted, searchQuery, performAiSearch]); // Removed isInitialLoad and aiSearchUnavailable as they are checked inside
 
 
   useEffect(() => {
@@ -137,7 +146,6 @@ function SearchPageComponent() {
       return;
     }
     let filtered = [...rawAiSpaces];
-    // Apply filters only if userSetFilters is not null
     if (userSetFilters) {
       filtered = filtered.filter(slot =>
         (slot.pricePerHour === undefined || (slot.pricePerHour >= userSetFilters.priceRange[0] && slot.pricePerHour <= userSetFilters.priceRange[1])) &&
@@ -152,8 +160,6 @@ function SearchPageComponent() {
             let matchesType = false;
             if (hasEvFeature && slot.slotType === 'ev-charging') matchesType = true;
             if (hasAccessibleFeature && slot.slotType === 'accessible') matchesType = true;
-            // If specific type filters are active, slot must match one of them.
-            // If no specific type filters are active (e.g. only 'covered' is selected), then don't filter by slotType here.
             if (!hasEvFeature && !hasAccessibleFeature) return true;
             return matchesType; 
          });
@@ -165,7 +171,7 @@ function SearchPageComponent() {
 
   const handleApplyFilters = useCallback((filters: ParkingFilters) => {
     setUserSetFilters(filters);
-    setSearchAttempted(true); // Applying filters implies a search attempt with the current query
+    setSearchAttempted(true); 
   }, []);
   
   const handleSearchInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -181,10 +187,10 @@ function SearchPageComponent() {
     }
     if (!searchQuery.trim() && !aiSearchUnavailable) {
        toast({title: "Search Empty", description:"Please enter a location to search.", variant: "default"});
-       // If search query is empty after submit, still mark search as "attempted" to show initial message or no results based on other states.
        setSearchAttempted(true);
-       setRawAiSpaces([]); // Clear previous results if any
+       setRawAiSpaces([]); 
        setDisplayedSpaces([]);
+       setMapMarkerPosition(null); // Clear marker
        return;
     }
     
@@ -194,8 +200,7 @@ function SearchPageComponent() {
     if(searchQuery.trim()) urlParams.set('location', searchQuery.trim());
     else urlParams.delete('location');
     router.push(`/search?${urlParams.toString()}`, { scroll: false });
-
-    // The useEffect hook will trigger performAiSearch due to searchQuery/searchAttempted change.
+    // performAiSearch will be triggered by useEffect dependency on searchQuery/searchAttempted
   };
 
   const handleMapClick = useCallback((coords: { lon: number, lat: number }) => {
@@ -208,18 +213,20 @@ function SearchPageComponent() {
         return;
     }
 
-    const newQuery = `Map click: Lat ${coords.lat.toFixed(4)}, Lon ${coords.lon.toFixed(4)}`;
-    setSearchQuery(newQuery); // Update the search bar text
-    setMapCenter([coords.lon, coords.lat]); // Center map on the clicked point
-    setMapZoom(15); // Zoom in on clicked point
+    const newQuery = `Clicked Location: Lat ${coords.lat.toFixed(4)}, Lon ${coords.lon.toFixed(4)}`;
+    setSearchQuery(newQuery); 
+    
+    const newMarkerPos: [number, number] = [coords.lon, coords.lat];
+    setMapMarkerPosition(newMarkerPos);
+    setMapCenter(newMarkerPos); 
+    setMapZoom(15); 
 
-    // Update URL to reflect the new search query derived from map click
     const urlParams = new URLSearchParams(window.location.search);
     urlParams.set('location', newQuery);
     router.push(`/search?${urlParams.toString()}`, { scroll: false });
 
-    setSearchAttempted(true); // This will trigger the useEffect to perform the search with newQuery
-}, [aiSearchUnavailable, isAuthenticated, authLoading, router, setMapCenter, setMapZoom]);
+    setSearchAttempted(true); 
+}, [aiSearchUnavailable, isAuthenticated, authLoading, router]);
 
 
   const noResultsMessage = () => {
@@ -232,17 +239,15 @@ function SearchPageComponent() {
             </div>
         );
     }
-    // This condition handles the initial state before any search or if search is empty
     if (!aiSearchPerformed && !searchQuery.trim()) {
       return (
         <div className="text-center py-10 text-muted-foreground bg-card rounded-lg shadow p-6">
           <Info className="mx-auto h-12 w-12 mb-4 text-primary" />
           <p className="text-lg font-medium text-foreground">Find Your Perfect Parking Slot</p>
-          <p className="text-sm">Enter a location above or use filters to start your AI-powered parking search.</p>
+          <p className="text-sm">Enter a location above, click the map, or use filters to start your AI-powered parking search.</p>
         </div>
       );
     }
-    // This is for when AI search was performed (or query exists) and no results found
     return (
       <div className="text-center py-10 text-muted-foreground bg-card rounded-lg shadow p-6">
         <AlertTriangle className="mx-auto h-12 w-12 mb-4 text-accent" />
@@ -286,6 +291,7 @@ function SearchPageComponent() {
             <OpenLayersMap 
               centerCoordinates={mapCenter} 
               zoomLevel={mapZoom}
+              markerCoordinates={mapMarkerPosition}
               onMapClick={handleMapClick}
             />
              {isLoading && (
@@ -325,16 +331,14 @@ function SearchPageComponent() {
                 ))}
               </div>
             ) : displayedSpaces.length === 0 && (aiSearchPerformed || searchQuery.trim() || searchAttempted) ? ( 
-                // Show "no results" only if a search was performed/attempted or query is present
                 noResultsMessage()
-            ) : displayedSpaces.length > 0 ? ( // Only show slots if there are any
+            ) : displayedSpaces.length > 0 ? ( 
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
                     {displayedSpaces.map(slot => (
                         <ParkingSlotCard key={slot.id} space={slot} />
                     ))}
                 </div>
             ) : (
-                // Fallback for initial state if not covered by isLoading or noResultsMessage (e.g., before any interaction)
                 noResultsMessage() 
             )}
           </div>
@@ -353,4 +357,3 @@ export default function SearchPage() {
   );
 }
 
-    

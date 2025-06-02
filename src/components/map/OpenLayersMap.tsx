@@ -9,63 +9,77 @@ import OSM from 'ol/source/OSM';
 import { fromLonLat, toLonLat } from 'ol/proj';
 import { defaults as defaultControls } from 'ol/control';
 import type { Coordinate } from 'ol/coordinate';
-import type { MapBrowserEvent } from 'ol'; // Import for type safety
+import type { MapBrowserEvent } from 'ol';
 
-// TODO: Potentially add marker feature in the future
-// import Feature from 'ol/Feature';
-// import Point from 'ol/geom/Point';
-// import { Vector as VectorLayer } from 'ol/layer';
-// import { Vector as VectorSource } from 'ol/source';
-// import { Style, Icon } from 'ol/style';
+// Imports for marker functionality
+import Feature from 'ol/Feature';
+import Point from 'ol/geom/Point';
+import { Vector as VectorLayer } from 'ol/layer';
+import { Vector as VectorSource } from 'ol/source';
+import { Style, Circle as OlCircle, Fill, Stroke } from 'ol/style';
 
 interface OpenLayersMapProps {
   centerCoordinates?: [number, number]; // Expecting [longitude, latitude]
   zoomLevel?: number;
   className?: string;
-  parkingSpots?: Array<{ id: string, coordinates: [number, number], name: string }>; // For future marker display
+  markerCoordinates?: [number, number] | null; // [longitude, latitude] for the marker or null to hide
   onMapClick?: (coords: { lon: number, lat: number }) => void;
 }
 
+const markerStyle = new Style({
+  image: new OlCircle({
+    radius: 7,
+    fill: new Fill({ color: 'rgba(255, 0, 0, 0.7)' }), // Red fill
+    stroke: new Stroke({ color: 'white', width: 2 }),
+  }),
+});
+
 export function OpenLayersMap({
-  centerCoordinates = [78.4867, 17.3850], // Default to Hyderabad
+  centerCoordinates = [78.4867, 17.3850],
   zoomLevel = 12,
   className = "w-full h-full",
-  // parkingSpots = [], // Uncomment for future use
+  markerCoordinates = null,
   onMapClick,
 }: OpenLayersMapProps) {
   const mapElementRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<Map | null>(null); // Renamed for clarity
+  const mapInstanceRef = useRef<Map | null>(null);
+  const markerLayerRef = useRef<VectorLayer<VectorSource<Point>> | null>(null);
   const [isMapInitialized, setIsMapInitialized] = useState(false);
-  const onMapClickRef = useRef(onMapClick); // Ref to store the latest onMapClick
+  const onMapClickRef = useRef(onMapClick);
 
-  // Update the ref if the onMapClick prop changes
   useEffect(() => {
     onMapClickRef.current = onMapClick;
   }, [onMapClick]);
 
-  const mapId = React.useId(); // Generate a stable unique ID for the map target
+  const mapId = React.useId();
 
   useEffect(() => {
-    // This effect runs only once on mount to initialize the map
     if (mapElementRef.current && !mapInstanceRef.current) {
       console.log(`OpenLayersMap (${mapId}): Initializing map.`);
+      
+      const initialMarkerLayer = new VectorLayer({
+        source: new VectorSource(),
+        style: markerStyle, // Default style for features in this layer
+      });
+      markerLayerRef.current = initialMarkerLayer;
+
       const map = new Map({
         target: mapElementRef.current,
         layers: [
           new TileLayer({
             source: new OSM(),
           }),
+          initialMarkerLayer, // Add marker layer to map
         ],
         view: new View({
-          center: fromLonLat(centerCoordinates), // Use initial props
-          zoom: zoomLevel, // Use initial props
+          center: fromLonLat(centerCoordinates),
+          zoom: zoomLevel,
           minZoom: 2,
           maxZoom: 19,
         }),
         controls: defaultControls({ attributionOptions: { collapsible: true } }),
       });
 
-      // Attach event listener using the ref
       map.on('singleclick', (event: MapBrowserEvent<UIEvent>) => {
         if (onMapClickRef.current) {
           const clickedCoordinate = event.coordinate;
@@ -75,22 +89,22 @@ export function OpenLayersMap({
       });
       
       mapInstanceRef.current = map;
-      setIsMapInitialized(true); // Signal that map is ready
+      setIsMapInitialized(true);
     }
 
-    // Cleanup function: This runs when the component unmounts.
     return () => {
       if (mapInstanceRef.current) {
         console.log(`OpenLayersMap (${mapId}): Disposing map instance.`);
-        mapInstanceRef.current.setTarget(undefined); // Detach map from DOM element
-        mapInstanceRef.current.dispose(); // Dispose of the map instance and its resources
-        mapInstanceRef.current = null; // Clear the ref
+        mapInstanceRef.current.setTarget(undefined);
+        mapInstanceRef.current.dispose();
+        mapInstanceRef.current = null;
+        markerLayerRef.current = null;
       }
-      setIsMapInitialized(false); // Reset initialization state on unmount
+      setIsMapInitialized(false);
     };
-  }, [mapId, centerCoordinates, zoomLevel]); // Effect depends on mapId (stable) and initial view props
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapId]); // Only re-run if mapId changes (which it shouldn't for a given component instance)
 
-  // Effect to update map view if centerCoordinates or zoomLevel props change AFTER initialization
   useEffect(() => {
     if (mapInstanceRef.current && isMapInitialized) {
       const view = mapInstanceRef.current.getView();
@@ -100,7 +114,7 @@ export function OpenLayersMap({
         const newCenterOL = fromLonLat(centerCoordinates);
 
         let viewChanged = false;
-        if (currentCenterOL && (currentCenterOL[0] !== newCenterOL[0] || currentCenterOL[1] !== newCenterOL[1])) {
+        if (currentCenterOL && (Math.abs(currentCenterOL[0] - newCenterOL[0]) > 1e-6 || Math.abs(currentCenterOL[1] - newCenterOL[1]) > 1e-6 )) {
           view.setCenter(newCenterOL);
           viewChanged = true;
         }
@@ -115,12 +129,29 @@ export function OpenLayersMap({
     }
   }, [centerCoordinates, zoomLevel, isMapInitialized, mapId]);
 
-  // Placeholder for adding markers in the future
-  // useEffect(() => {
-  //   if (mapInstanceRef.current && isMapInitialized && parkingSpots.length > 0) {
-  //     // Logic to create/update marker layer
-  //   }
-  // }, [parkingSpots, isMapInitialized]);
+  // Effect to update marker
+  useEffect(() => {
+    if (!isMapInitialized || !mapInstanceRef.current || !markerLayerRef.current) {
+      return;
+    }
+    const currentMarkerLayer = markerLayerRef.current;
+    const source = currentMarkerLayer.getSource();
+
+    if (source) {
+      source.clear(); // Clear previous markers
+      if (markerCoordinates) {
+        const markerFeature = new Feature({
+          geometry: new Point(fromLonLat(markerCoordinates)),
+        });
+        // The layer's style will apply, or set individually: markerFeature.setStyle(markerStyle);
+        source.addFeature(markerFeature);
+        console.log(`OpenLayersMap (${mapId}): Marker updated to ${markerCoordinates}`);
+      } else {
+        console.log(`OpenLayersMap (${mapId}): Marker cleared.`);
+      }
+    }
+  }, [markerCoordinates, isMapInitialized, mapId]);
+
 
   return <div ref={mapElementRef} className={className} id={mapId} tabIndex={0} />;
 }
