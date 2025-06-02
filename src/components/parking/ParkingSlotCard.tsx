@@ -5,11 +5,12 @@ import type { ParkingSpace } from '@/types';
 import { slotTypeIcons } from '@/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Car, CarFront, Accessibility, Zap, Navigation, CalendarPlus } from 'lucide-react'; // Added CalendarPlus
-import Link from 'next/link'; // Added Link for navigation
-import { useAuth } from '@/hooks/useAuth'; // Added useAuth
-import { toast } from '@/hooks/use-toast'; // Added toast
-import { useRouter } from 'next/navigation'; // Added useRouter
+import { Car, CarFront, Accessibility, Zap, Navigation, CalendarPlus } from 'lucide-react';
+import Link from 'next/link';
+import { useAuth } from '@/hooks/useAuth';
+import { toast } from '@/hooks/use-toast';
+import { useRouter } from 'next/navigation';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface ParkingSlotCardProps {
   space: ParkingSpace;
@@ -17,8 +18,10 @@ interface ParkingSlotCardProps {
 
 export function ParkingSlotCard({ space }: ParkingSlotCardProps) {
   const SlotTypeIcon = slotTypeIcons[space.slotType] || CarFront;
-  const { isAuthenticated, loading: authLoading } = useAuth(); // Get auth state
-  const router = useRouter(); // For programmatic navigation
+  const { isAuthenticated, loading: authLoading } = useAuth();
+  const router = useRouter();
+
+  const isFallbackSlot = space.id.startsWith('fallback-slot-');
 
   const cardBgColor = space.isOccupied ? 'bg-red-500/10 hover:bg-red-500/20' : 'bg-green-500/10 hover:bg-green-500/20';
   const borderColor = space.isOccupied ? 'border-red-500/30' : 'border-green-500/30';
@@ -26,7 +29,7 @@ export function ParkingSlotCard({ space }: ParkingSlotCardProps) {
   const iconColor = space.isOccupied ? 'text-red-500/80' : 'text-green-500/80';
 
   const handleNavigate = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent card click if button is separate
+    e.stopPropagation();
     if (space.facilityCoordinates) {
       const { lat, lng } = space.facilityCoordinates;
       window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
@@ -34,7 +37,17 @@ export function ParkingSlotCard({ space }: ParkingSlotCardProps) {
   };
 
   const handleBookNowClick = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent card click if button is separate
+    e.stopPropagation();
+    if (isFallbackSlot) {
+        // This click handler might not even be reached if button is truly disabled,
+        // but good for clarity. Tooltip is primary feedback.
+        toast({
+            title: "Demo Slot",
+            description: "Fallback slots are for demonstration and cannot be booked.",
+            variant: "default"
+        });
+        return;
+    }
     if (!isAuthenticated && !authLoading) {
       toast({
         title: "Login Required",
@@ -44,8 +57,29 @@ export function ParkingSlotCard({ space }: ParkingSlotCardProps) {
       router.push(`/login?redirect=/booking/${space.id}`);
       return;
     }
-    // If authenticated, navigation will be handled by the Link component
+    // If authenticated, navigation is handled by the Link component
   };
+
+  const bookNowButton = (
+    <Button
+      variant="default"
+      size="sm"
+      className="w-full mt-2 text-xs h-8"
+      onClick={handleBookNowClick}
+      disabled={isFallbackSlot || space.isOccupied}
+      asChild={!isFallbackSlot && !space.isOccupied} // Only use asChild if not disabled
+    >
+      {isFallbackSlot || space.isOccupied ? (
+        <span className="flex items-center">
+          <CalendarPlus className="mr-1.5 h-3.5 w-3.5" /> Book Now
+        </span>
+      ) : (
+        <Link href={`/booking/${space.id}`}>
+            <CalendarPlus className="mr-1.5 h-3.5 w-3.5" /> Book Now
+        </Link>
+      )}
+    </Button>
+  );
 
   const cardContent = (
     <CardContent className="p-3 sm:p-4 flex flex-col justify-between h-full">
@@ -80,17 +114,19 @@ export function ParkingSlotCard({ space }: ParkingSlotCardProps) {
           <SlotTypeIcon className={`h-6 w-6 sm:h-8 sm:w-8 mx-auto ${iconColor} opacity-60`} />
           <p className={`mt-1 text-sm font-semibold ${textColor}`}>Available</p>
           {space.pricePerHour !== undefined && <p className="text-xs text-muted-foreground">${space.pricePerHour.toFixed(2)}/hr</p>}
-          <Button
-            variant="default"
-            size="sm"
-            className="w-full mt-2 text-xs h-8"
-            onClick={handleBookNowClick} // Auth check, Link handles actual navigation
-            asChild // Important: Allows the Link to control navigation
-          >
-            <Link href={`/booking/${space.id}`}>
-                <CalendarPlus className="mr-1.5 h-3.5 w-3.5" /> Book Now
-            </Link>
-          </Button>
+          
+          {isFallbackSlot ? (
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>{bookNowButton}</TooltipTrigger>
+                <TooltipContent>
+                  <p>Fallback slots are for demo and cannot be booked.</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            bookNowButton
+          )}
         </div>
       )}
       
