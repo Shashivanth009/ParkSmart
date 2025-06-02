@@ -11,13 +11,20 @@ import { Footer } from '@/components/core/Footer';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-// Removed Image import, replaced with OpenLayersMap
 import { OpenLayersMap } from '@/components/map/OpenLayersMap';
 import { ListFilter, MapPin as MapPinIcon, Loader2, AlertTriangle, Info, ServerCrash, Search } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { findParkingSpots, type FindParkingInput } from '@/ai/flows/find-parking-flow';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
+
+const DEFAULT_FILTERS: ParkingFilters = {
+  priceRange: [0, 50] as [number, number],
+  features: [] as ParkingFeature[],
+  distanceMax: 5, // default 5km
+  ratingMin: 0,
+};
+
 
 function SearchPageComponent() {
   const searchParams = useSearchParams();
@@ -42,9 +49,6 @@ function SearchPageComponent() {
 
 
   useEffect(() => {
-    // This app is configured for static export, AI flows are not available.
-    // setAiSearchUnavailable(true); // Kept for reference, but if using live, this is false.
-    // For this OpenLayers integration, let's assume AI search is available
     setAiSearchUnavailable(false); 
   }, []);
 
@@ -52,7 +56,7 @@ function SearchPageComponent() {
     const urlLocation = searchParams.get('location') || '';
     setSearchQuery(urlLocation);
     if (urlLocation) {
-      setSearchAttempted(true);
+      setSearchAttempted(true); // If location in URL, consider it an attempt
     }
     setIsInitialLoad(false);
   }, [searchParams]); 
@@ -81,13 +85,13 @@ function SearchPageComponent() {
       setRawAiSpaces([]);
       setDisplayedSpaces([]);
       setIsLoading(false);
-      setAiSearchPerformed(true); 
+      setAiSearchPerformed(true); // Mark as performed even if query is empty
       toast({title: "Search Empty", description:"Please enter a location to search.", variant: "default"});
       return;
     }
 
     setIsLoading(true);
-    setAiSearchPerformed(true);
+    setAiSearchPerformed(true); // Set this at the beginning of an actual attempt
     try {
       const searchInput: FindParkingInput = {
         locationName: locationQuery,
@@ -98,11 +102,7 @@ function SearchPageComponent() {
       setRawAiSpaces(results);
       if (results.length > 0 && results[0].facilityCoordinates) {
         setMapCenter([results[0].facilityCoordinates.lng, results[0].facilityCoordinates.lat]);
-        setMapZoom(14); // Zoom in a bit when results are found
-      } else if (results.length === 0) {
-        // Reset map to a default or broader view if no results, or keep current view
-        // setMapCenter([78.4867, 17.3850]); 
-        // setMapZoom(12);
+        setMapZoom(14);
       }
     } catch (error: any) {
       console.error("AI search failed:", error);
@@ -114,27 +114,21 @@ function SearchPageComponent() {
   }, [isAuthenticated, authLoading, router, aiSearchUnavailable]);
 
 
+  // This useEffect triggers AI search based on state changes
   useEffect(() => {
-    if (isInitialLoad || !userSetFilters || !searchAttempted) return;
+    if (isInitialLoad || !searchAttempted || !searchQuery.trim()) return;
     if (aiSearchUnavailable) return;
 
     const locationToSearch = searchQuery.trim();
-    const searchRadiusToUse = userSetFilters.distanceMax;
-    const desiredFeaturesForAI = userSetFilters.features;
+    // Use userSetFilters if available, otherwise use default filters
+    const filtersToUse = userSetFilters || DEFAULT_FILTERS;
     
     performAiSearch(
       locationToSearch,
-      searchRadiusToUse,
-      desiredFeaturesForAI
+      filtersToUse.distanceMax,
+      filtersToUse.features
     );
   }, [userSetFilters, searchAttempted, isInitialLoad, aiSearchUnavailable, searchQuery, performAiSearch]);
-
-  useEffect(() => {
-    if (isInitialLoad || aiSearchUnavailable) return; 
-    if (userSetFilters && searchQuery.trim()) { 
-      setSearchAttempted(true); 
-    }
-  }, [searchQuery, userSetFilters, isInitialLoad, aiSearchUnavailable]);
 
 
   useEffect(() => {
@@ -143,6 +137,7 @@ function SearchPageComponent() {
       return;
     }
     let filtered = [...rawAiSpaces];
+    // Apply filters only if userSetFilters is not null
     if (userSetFilters) {
       filtered = filtered.filter(slot =>
         (slot.pricePerHour === undefined || (slot.pricePerHour >= userSetFilters.priceRange[0] && slot.pricePerHour <= userSetFilters.priceRange[1])) &&
@@ -157,8 +152,9 @@ function SearchPageComponent() {
             let matchesType = false;
             if (hasEvFeature && slot.slotType === 'ev-charging') matchesType = true;
             if (hasAccessibleFeature && slot.slotType === 'accessible') matchesType = true;
-            // If no specific type filters are set, don't filter by type
-            if (!hasEvFeature && !hasAccessibleFeature) return true; 
+            // If specific type filters are active, slot must match one of them.
+            // If no specific type filters are active (e.g. only 'covered' is selected), then don't filter by slotType here.
+            if (!hasEvFeature && !hasAccessibleFeature) return true;
             return matchesType; 
          });
       }
@@ -169,7 +165,7 @@ function SearchPageComponent() {
 
   const handleApplyFilters = useCallback((filters: ParkingFilters) => {
     setUserSetFilters(filters);
-    setSearchAttempted(true); 
+    setSearchAttempted(true); // Applying filters implies a search attempt with the current query
   }, []);
   
   const handleSearchInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -185,6 +181,10 @@ function SearchPageComponent() {
     }
     if (!searchQuery.trim() && !aiSearchUnavailable) {
        toast({title: "Search Empty", description:"Please enter a location to search.", variant: "default"});
+       // If search query is empty after submit, still mark search as "attempted" to show initial message or no results based on other states.
+       setSearchAttempted(true);
+       setRawAiSpaces([]); // Clear previous results if any
+       setDisplayedSpaces([]);
        return;
     }
     
@@ -195,20 +195,31 @@ function SearchPageComponent() {
     else urlParams.delete('location');
     router.push(`/search?${urlParams.toString()}`, { scroll: false });
 
-    // Trigger AI search if filters are already set, or rely on useEffect for userSetFilters
-    if (userSetFilters) {
-        performAiSearch(searchQuery.trim(), userSetFilters.distanceMax, userSetFilters.features);
-    }
+    // The useEffect hook will trigger performAiSearch due to searchQuery/searchAttempted change.
   };
 
   const handleMapClick = useCallback((coords: { lon: number, lat: number }) => {
-    console.log("Map clicked at Lon:", coords.lon, "Lat:", coords.lat);
-    // You could potentially use these coordinates to set a search query or trigger a reverse geocode
-    // For now, just logging.
-    // setSearchQuery(`Coords: ${coords.lat.toFixed(4)}, ${coords.lon.toFixed(4)}`);
-    // setMapCenter([coords.lon, coords.lat]); // Center map on click
-    // setMapZoom(15);
-  }, []);
+    if (aiSearchUnavailable) {
+        toast({ title: "Map Interaction Disabled", description: "AI Search is currently unavailable.", variant: "default" });
+        return;
+    }
+    if (!isAuthenticated && !authLoading) {
+        toast({ title: "Login Required", description: "Please log in to search using the map.", variant: "destructive" });
+        return;
+    }
+
+    const newQuery = `Map click: Lat ${coords.lat.toFixed(4)}, Lon ${coords.lon.toFixed(4)}`;
+    setSearchQuery(newQuery); // Update the search bar text
+    setMapCenter([coords.lon, coords.lat]); // Center map on the clicked point
+    setMapZoom(15); // Zoom in on clicked point
+
+    // Update URL to reflect the new search query derived from map click
+    const urlParams = new URLSearchParams(window.location.search);
+    urlParams.set('location', newQuery);
+    router.push(`/search?${urlParams.toString()}`, { scroll: false });
+
+    setSearchAttempted(true); // This will trigger the useEffect to perform the search with newQuery
+}, [aiSearchUnavailable, isAuthenticated, authLoading, router, setMapCenter, setMapZoom]);
 
 
   const noResultsMessage = () => {
@@ -221,6 +232,7 @@ function SearchPageComponent() {
             </div>
         );
     }
+    // This condition handles the initial state before any search or if search is empty
     if (!aiSearchPerformed && !searchQuery.trim()) {
       return (
         <div className="text-center py-10 text-muted-foreground bg-card rounded-lg shadow p-6">
@@ -230,6 +242,7 @@ function SearchPageComponent() {
         </div>
       );
     }
+    // This is for when AI search was performed (or query exists) and no results found
     return (
       <div className="text-center py-10 text-muted-foreground bg-card rounded-lg shadow p-6">
         <AlertTriangle className="mx-auto h-12 w-12 mb-4 text-accent" />
@@ -249,7 +262,7 @@ function SearchPageComponent() {
       <main className="flex-grow container mx-auto px-4 md:px-6 py-8">
         <PageTitle 
             title="AI Parking Slot Finder" 
-            description={searchQuery ? `Showing results for "${searchQuery}"` : "Search by location and filter preferences."}
+            description={searchQuery ? `Showing results for "${searchQuery}"` : "Search by location, click map, or filter preferences."}
         />
         
         <form onSubmit={handleTextSearchSubmit} className="mb-6 flex items-center gap-2">
@@ -274,7 +287,6 @@ function SearchPageComponent() {
               centerCoordinates={mapCenter} 
               zoomLevel={mapZoom}
               onMapClick={handleMapClick}
-              // parkingSpots={displayedSpaces.map(s => ({id: s.id, coordinates: [s.facilityCoordinates.lng, s.facilityCoordinates.lat], name: s.facilityName}))} // For future markers
             />
              {isLoading && (
                 <div className="absolute inset-0 bg-background/50 flex items-center justify-center z-10">
@@ -286,21 +298,20 @@ function SearchPageComponent() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-4 xl:col-span-3">
              <div className="sticky top-20"> 
-                <ParkingPreferenceFilter onApplyFilters={handleApplyFilters} />
+                <ParkingPreferenceFilter onApplyFilters={handleApplyFilters} defaultFilters={DEFAULT_FILTERS}/>
              </div>
           </div>
 
           <div className="lg:col-span-8 xl:col-span-9">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-semibold">
-                {isLoading && !aiSearchPerformed ? 'Loading Map & Filters...' : // Initial load before any search
-                 isLoading ? 'Searching for Parking Slots...' : 
+                {isLoading ? 'Searching for Parking Slots...' : 
                  aiSearchUnavailable ? 'AI Search Unavailable' : 
-                 `${displayedSpaces.length} Parking Slots Found`}
+                 (aiSearchPerformed || searchQuery.trim()) ? `${displayedSpaces.length} Parking Slots Found` : 'Explore Parking Slots'} 
               </h2>
             </div>
 
-            {isLoading && aiSearchPerformed ? ( // Show skeletons only when AI search is in progress
+            {isLoading ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
                 {[...Array(10)].map((_, i) => (
                    <Card key={i} className="w-full aspect-[3/4] sm:aspect-[2/3] shadow-md">
@@ -313,14 +324,18 @@ function SearchPageComponent() {
                   </Card>
                 ))}
               </div>
-            ) : displayedSpaces.length === 0 || aiSearchUnavailable ? (
+            ) : displayedSpaces.length === 0 && (aiSearchPerformed || searchQuery.trim() || searchAttempted) ? ( 
+                // Show "no results" only if a search was performed/attempted or query is present
                 noResultsMessage()
-            ) : (
+            ) : displayedSpaces.length > 0 ? ( // Only show slots if there are any
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
                     {displayedSpaces.map(slot => (
                         <ParkingSlotCard key={slot.id} space={slot} />
                     ))}
                 </div>
+            ) : (
+                // Fallback for initial state if not covered by isLoading or noResultsMessage (e.g., before any interaction)
+                noResultsMessage() 
             )}
           </div>
         </div>
@@ -337,3 +352,5 @@ export default function SearchPage() {
     </Suspense>
   );
 }
+
+    
