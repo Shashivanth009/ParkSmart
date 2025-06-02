@@ -88,6 +88,29 @@ The primary output should be the list of individual parking slots. Your response
 `,
 });
 
+const generateFallbackSlots = (input: FindParkingInput): ParkingSpace[] => {
+    return Array.from({ length: 10 }, (_, i) => ({
+        id: `fallback-slot-${Date.now()}-${i}`,
+        slotLabel: `F${i+1}`,
+        floorLevel: 'Ground',
+        isOccupied: i % 2 === 0,
+        vehicleIdOccupying: (i % 2 === 0) ? `VEH-${i}` : undefined,
+        occupiedSince: (i % 2 === 0) ? '1 hr ago' : undefined,
+        slotType: 'standard' as 'standard' | 'accessible' | 'ev-charging',
+        facilityName: 'Fallback Parking Facility',
+        facilityAddress: input.locationName || 'AI Service Unavailable - Unknown Location',
+        facilityCoordinates: { lat: 17.3850, lng: 78.4867 }, // Default to Hyderabad
+        imageUrl: 'https://placehold.co/600x400.png',
+        dataAiHint: 'generic parking',
+        pricePerHour: 2.0,
+        facilityRating: 3.0,
+        totalSpots: 20,
+        availableSpots: 10,
+        features: [],
+        availability: 'medium'
+    }));
+};
+
 const findParkingGenkitFlow = ai.defineFlow(
   {
     name: 'findParkingSlotsGenkitFlow',
@@ -95,26 +118,23 @@ const findParkingGenkitFlow = ai.defineFlow(
     outputSchema: FindParkingOutputSchema,
   },
   async (input) => {    
-    const { output } = await findParkingPrompt(input);
+    let output: FindParkingOutput | null = null;
+    try {
+      const result = await findParkingPrompt(input);
+      output = result.output;
+    } catch (error) {
+      console.error('AI prompt failed for findParkingSlotsGenkitFlow. Input:', input, 'Error:', error);
+      // If AI prompt fails, we'll use the fallback mechanism below.
+      // Output remains null here.
+    }
+
     if (!output || !output.parkingSlots || output.parkingSlots.length === 0) {
-        console.warn('AI prompt did not return expected output for findParkingSlotsGenkitFlow. Input:', input);
-        // Fallback: Generate some very basic dummy slots if AI fails, though the prompt now strongly discourages this.
-        return { parkingSlots: Array.from({ length: 10 }, (_, i) => ({
-            id: `fallback-slot-${Date.now()}-${i}`, // Ensure unique fallback IDs
-            slotLabel: `F${i+1}`,
-            floorLevel: 'Ground',
-            isOccupied: i % 2 === 0,
-            slotType: 'standard' as 'standard' | 'accessible' | 'ev-charging',
-            facilityName: 'Fallback Facility',
-            facilityAddress: input.locationName || 'Unknown Location',
-            facilityCoordinates: { lat: 17.3850, lng: 78.4867 }, // Default to a known location
-            imageUrl: 'https://placehold.co/600x400.png',
-            dataAiHint: 'generic parking',
-            pricePerHour: 2.0,
-            facilityRating: 3.0,
-            totalSpots: 20,
-            availableSpots: 10,
-        })) as ParkingSpace[]};
+        if (!output) { // This means the try block caught an error
+             console.warn('AI prompt call failed. Generating fallback slots. Input:', input);
+        } else { // This means AI returned empty or invalid data
+             console.warn('AI prompt returned no valid parkingSlots. Generating fallback slots. Input:', input);
+        }
+        return { parkingSlots: generateFallbackSlots(input) };
     }
 
     const processedSlots = output.parkingSlots.map(slot => {
@@ -129,12 +149,10 @@ const findParkingGenkitFlow = ai.defineFlow(
         if (!processedSlot.dataAiHint || processedSlot.dataAiHint.split(' ').length > 2) {
             processedSlot.dataAiHint = 'parking area'; 
         }
-        // Ensure pricePerHour is a number and positive if present
         if (processedSlot.pricePerHour !== undefined) {
             const price = Number(processedSlot.pricePerHour);
             processedSlot.pricePerHour = isNaN(price) || price < 0 ? undefined : price;
         }
-         // Ensure facilityRating is a number and within range if present
         if (processedSlot.facilityRating !== undefined) {
             const rating = Number(processedSlot.facilityRating);
             processedSlot.facilityRating = isNaN(rating) || rating < 0 || rating > 5 ? undefined : rating;
@@ -150,3 +168,5 @@ export async function findParkingSpots(input: FindParkingInput): Promise<Parking
   const result = await findParkingGenkitFlow(input);
   return result.parkingSlots;
 }
+
+    
