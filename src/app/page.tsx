@@ -14,11 +14,7 @@ import Image from 'next/image';
 import type { ParkingSpace } from '@/types';
 import { useAuth } from '@/hooks/useAuth';
 
-const mockFeaturedSpaces: Omit<ParkingSpace, 'slotLabel' | 'floorLevel' | 'isOccupied' | 'slotType'>[] = [
-  { id: 'ps1', facilityName: 'Charminar Parking Plaza', facilityAddress: 'Near Charminar, Hyderabad', availability: 'high', pricePerHour: 2.5, features: ['covered', 'ev-charging', 'cctv'], facilityCoordinates: { lat: 17.3616, lng: 78.4747 }, facilityRating: 4.5, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 50, totalSpots: 100, dataAiHint: "historic monument parking" },
-  { id: 'ps2', facilityName: 'Hitech City Secure Park', facilityAddress: 'Mindspace Circle, Hyderabad', availability: 'medium', pricePerHour: 3.0, features: ['cctv', 'secure'], facilityCoordinates: { lat: 17.4474, lng: 78.3762 }, facilityRating: 4.2, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 20, totalSpots: 80, dataAiHint: "tech park garage" },
-  { id: 'ps3', facilityName: 'Gachibowli Stadium Lot', facilityAddress: 'Old Mumbai Hwy, Hyderabad', availability: 'low', pricePerHour: 1.8, features: ['covered', 'secure', 'well-lit'], facilityCoordinates: { lat: 17.4417, lng: 78.3498 }, facilityRating: 4.0, imageUrl: 'https://placehold.co/600x400.png', availableSpots: 5, totalSpots: 150, dataAiHint: "stadium parking lot" },
-];
+// Removed mockFeaturedSpaces as the section using it is removed.
 
 export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -83,7 +79,7 @@ export default function HomePage() {
             </form>
              {!isAuthenticated && (
                 <p className="mt-4 text-sm text-accent">
-                    <Link href={`/login?redirect=${encodeURIComponent(searchQuery ? `/search?location=${searchQuery}` : '/')}`} className="underline hover:text-accent/80">Log in</Link> or <Link href="/signup" className="underline hover:text-accent/80">sign up</Link> to access all parking features.
+                    <Link href={`/login?redirect=${encodeURIComponent(searchQuery ? `/search?location=${searchQuery}` : '/')}`} className="underline hover:text-accent/80">Log in</Link> or <Link href="/signup" className="underline hover:text-accent/80">Sign up</Link> to access all parking features.
                 </p>
             )}
           </div>
@@ -171,48 +167,9 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="py-12 md:py-16 bg-card/50">
-          <div className="container mx-auto px-4 md:px-6">
-            <h2 className="text-3xl font-bold text-center mb-8 md:mb-12 text-foreground">Featured Parking Locations</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-              {mockFeaturedSpaces.map(space => (
-                <Card key={space.id} className="overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300">
-                  <Image
-                    src={space.imageUrl!}
-                    alt={space.facilityName}
-                    width={600}
-                    height={400}
-                    className="w-full h-48 object-cover"
-                    data-ai-hint={space.dataAiHint || "parking garage building"} />
-                  <CardHeader>
-                    <CardTitle>{space.facilityName}</CardTitle>
-                    <CardDescription>{space.facilityAddress}</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex justify-between items-center mb-2 text-sm">
-                      <span className={`font-semibold ${space.availability === 'high' ? 'text-green-400' : space.availability === 'medium' ? 'text-yellow-400' : 'text-red-400'}`}>
-                        {space.availability?.toUpperCase()}
-                      </span>
-                      <span className="text-lg font-bold text-primary">${space.pricePerHour?.toFixed(2)}/hr</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{space.availableSpots} / {space.totalSpots} spots available</p>
-                  </CardContent>
-                  <CardFooter>
-                    <Button className="w-full mt-2" asChild>
-                      <Link href={isAuthenticated ? `/booking/${space.id}` : `/login?redirect=${encodeURIComponent(`/booking/${space.id}`)}`}>
-                        Book Now
-                      </Link>
-                    </Button>
-                  </CardFooter>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </section>
+        {/* Featured Parking Locations section removed */}
       </main>
       <Footer />
     </div>
   );
 }
-
-    

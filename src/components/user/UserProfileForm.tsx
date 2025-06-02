@@ -12,8 +12,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/hooks/useAuth";
-import { UploadCloud } from "lucide-react";
-import { useEffect } from 'react';
+import { UploadCloud, Edit2 } from "lucide-react";
+import { useEffect, useRef } from 'react';
+import { toast } from '@/hooks/use-toast';
 
 const profileSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
@@ -21,7 +22,7 @@ const profileSchema = z.object({
   phone: z.string().optional().refine(val => !val || /^[+]?[0-9]{10,15}$/.test(val), {
     message: "Invalid phone number format.",
   }),
-  avatarUrl: z.string().url({ message: "Please enter a valid URL for the avatar." }).optional().or(z.literal("")).or(z.null()),
+  avatarUrl: z.string().optional().or(z.literal("")).or(z.null()), // Accepts URLs and Data URLs
   
   defaultVehiclePlate: z.string().optional().refine(val => !val || /^[A-Z0-9\s-]{3,10}$/i.test(val), {
     message: "Invalid vehicle plate format (3-10 alphanumeric chars, spaces, hyphens)."
@@ -46,6 +47,7 @@ interface UserProfileFormProps {
 
 export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: UserProfileFormProps) {
   const { loading: authLoading } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
@@ -86,18 +88,18 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
   async function processSubmit(values: ProfileFormValues) {
     const submitData: Partial<UserProfileType> = {
         name: values.name,
-        phone: values.phone || undefined,
-        avatarUrl: values.avatarUrl || undefined,
+        phone: values.phone, // Will be handled by useAuth to be null if empty
+        avatarUrl: values.avatarUrl, // Will be handled by useAuth
         preferences: {
-            ...userProfile.preferences, 
-            defaultVehiclePlate: values.defaultVehiclePlate || undefined,
-            defaultVehicleMake: values.defaultVehicleMake || undefined,
-            defaultVehicleModel: values.defaultVehicleModel || undefined,
-            defaultVehicleColor: values.defaultVehicleColor || undefined,
+            ...(userProfile.preferences || {}), 
+            defaultVehiclePlate: values.defaultVehiclePlate,
+            defaultVehicleMake: values.defaultVehicleMake,
+            defaultVehicleModel: values.defaultVehicleModel,
+            defaultVehicleColor: values.defaultVehicleColor,
             requireCovered: values.requireCovered,
             requireEVCharging: values.requireEVCharging,
             communication: {
-                ...(userProfile.preferences?.communication),
+                ...(userProfile.preferences?.communication || {}),
                 bookingEmails: values.communicationBookingEmails,
                 promotionalEmails: values.communicationPromotionalEmails,
             }
@@ -109,6 +111,20 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
   const currentAvatar = form.watch("avatarUrl") || userProfile.avatarUrl;
   const currentName = form.watch("name") || userProfile.name;
 
+  const handleAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) { // 2MB limit
+        toast({ title: "Image Too Large", description: "Please select an image smaller than 2MB.", variant: "destructive"});
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        form.setValue("avatarUrl", reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   return (
     <Form {...form}>
@@ -122,22 +138,36 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
             <FormField
               control={form.control}
               name="avatarUrl"
-              render={({ field }) => (
+              render={({ field }) => ( // field is not directly used for input but for form state
                 <FormItem className="flex flex-col items-center text-center">
-                  <Avatar className="w-24 h-24 mb-2 ring-2 ring-primary ring-offset-2 ring-offset-background">
-                    <AvatarImage src={currentAvatar || undefined} alt={currentName || "User Avatar"} data-ai-hint="person portrait" />
-                    <AvatarFallback>{currentName?.charAt(0).toUpperCase() || 'U'}</AvatarFallback>
-                  </Avatar>
+                  <div className="relative group">
+                    <Avatar className="w-24 h-24 mb-2 ring-2 ring-primary ring-offset-2 ring-offset-background">
+                      <AvatarImage src={currentAvatar || undefined} alt={currentName || "User Avatar"} data-ai-hint="user portrait" />
+                      <AvatarFallback>{currentName?.charAt(0).toUpperCase() || 'U'}</AvatarFallback>
+                    </Avatar>
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="icon" 
+                      className="absolute bottom-0 right-0 rounded-full h-8 w-8 bg-background/80 group-hover:bg-primary/20"
+                      onClick={() => fileInputRef.current?.click()}
+                      title="Change profile picture"
+                    >
+                      <Edit2 className="h-4 w-4 text-primary group-hover:text-primary-foreground" />
+                    </Button>
+                  </div>
                   <FormControl>
-                    <div className="flex items-center gap-2 w-full max-w-sm mx-auto">
-                      <Input type="url" placeholder="Paste image URL for avatar" {...field} value={field.value ?? ""} className="text-xs"/>
-                      <Button type="button" variant="outline" size="icon" className="shrink-0"
-                        onClick={() => alert("File upload for avatar coming soon! For now, please use a URL.")}>
-                        <UploadCloud className="h-4 w-4"/>
-                      </Button>
-                    </div>
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      className="hidden" 
+                      accept="image/*" 
+                      onChange={handleAvatarChange}
+                    />
                   </FormControl>
-                  <FormDescription className="text-xs">Please enter a valid URL for your avatar.</FormDescription>
+                  <FormDescription className="text-xs mt-2">
+                    Click the edit icon to choose an image (max 2MB).
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
