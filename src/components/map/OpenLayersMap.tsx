@@ -9,6 +9,7 @@ import OSM from 'ol/source/OSM';
 import { fromLonLat, toLonLat } from 'ol/proj';
 import { defaults as defaultControls } from 'ol/control';
 import type { Coordinate } from 'ol/coordinate';
+import type { MapBrowserEvent } from 'ol'; // Import for type safety
 
 // TODO: Potentially add marker feature in the future
 // import Feature from 'ol/Feature';
@@ -33,11 +34,21 @@ export function OpenLayersMap({
   onMapClick,
 }: OpenLayersMapProps) {
   const mapElementRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<Map | null>(null);
+  const mapInstanceRef = useRef<Map | null>(null); // Renamed for clarity
   const [isMapInitialized, setIsMapInitialized] = useState(false);
+  const onMapClickRef = useRef(onMapClick); // Ref to store the latest onMapClick
+
+  // Update the ref if the onMapClick prop changes
+  useEffect(() => {
+    onMapClickRef.current = onMapClick;
+  }, [onMapClick]);
+
+  const mapId = React.useId(); // Generate a stable unique ID for the map target
 
   useEffect(() => {
-    if (mapElementRef.current && !isMapInitialized) {
+    // This effect runs only once on mount to initialize the map
+    if (mapElementRef.current && !mapInstanceRef.current) {
+      console.log(`OpenLayersMap (${mapId}): Initializing map.`);
       const map = new Map({
         target: mapElementRef.current,
         layers: [
@@ -46,50 +57,70 @@ export function OpenLayersMap({
           }),
         ],
         view: new View({
-          center: fromLonLat(centerCoordinates),
-          zoom: zoomLevel,
+          center: fromLonLat(centerCoordinates), // Use initial props
+          zoom: zoomLevel, // Use initial props
           minZoom: 2,
           maxZoom: 19,
         }),
-        controls: defaultControls({attributionOptions: {collapsible: true}}),
+        controls: defaultControls({ attributionOptions: { collapsible: true } }),
       });
 
-      if (onMapClick) {
-        map.on('singleclick', (event) => {
+      // Attach event listener using the ref
+      map.on('singleclick', (event: MapBrowserEvent<UIEvent>) => {
+        if (onMapClickRef.current) {
           const clickedCoordinate = event.coordinate;
           const lonLat = toLonLat(clickedCoordinate);
-          onMapClick({ lon: lonLat[0], lat: lonLat[1] });
-        });
-      }
-      
-      mapRef.current = map;
-      setIsMapInitialized(true);
-
-      return () => {
-        if (mapRef.current) {
-          mapRef.current.setTarget(undefined);
-          mapRef.current = null;
+          onMapClickRef.current({ lon: lonLat[0], lat: lonLat[1] });
         }
-        setIsMapInitialized(false);
-      };
+      });
+      
+      mapInstanceRef.current = map;
+      setIsMapInitialized(true); // Signal that map is ready
     }
-  }, [isMapInitialized]); // Only re-run if isMapInitialized changes (for initial setup)
 
-  // Effect to update map view if props change after initialization
+    // Cleanup function: This runs when the component unmounts.
+    return () => {
+      if (mapInstanceRef.current) {
+        console.log(`OpenLayersMap (${mapId}): Disposing map instance.`);
+        mapInstanceRef.current.setTarget(undefined); // Detach map from DOM element
+        mapInstanceRef.current.dispose(); // Dispose of the map instance and its resources
+        mapInstanceRef.current = null; // Clear the ref
+      }
+      setIsMapInitialized(false); // Reset initialization state on unmount
+    };
+  }, [mapId, centerCoordinates, zoomLevel]); // Effect depends on mapId (stable) and initial view props
+
+  // Effect to update map view if centerCoordinates or zoomLevel props change AFTER initialization
   useEffect(() => {
-    if (mapRef.current && isMapInitialized) {
-      mapRef.current.getView().setCenter(fromLonLat(centerCoordinates));
-      mapRef.current.getView().setZoom(zoomLevel);
+    if (mapInstanceRef.current && isMapInitialized) {
+      const view = mapInstanceRef.current.getView();
+      if (view) {
+        const currentCenterOL = view.getCenter();
+        const currentZoom = view.getZoom();
+        const newCenterOL = fromLonLat(centerCoordinates);
+
+        let viewChanged = false;
+        if (currentCenterOL && (currentCenterOL[0] !== newCenterOL[0] || currentCenterOL[1] !== newCenterOL[1])) {
+          view.setCenter(newCenterOL);
+          viewChanged = true;
+        }
+        if (currentZoom !== zoomLevel) {
+          view.setZoom(zoomLevel);
+          viewChanged = true;
+        }
+        if(viewChanged) {
+            console.log(`OpenLayersMap (${mapId}): View updated - Center: ${centerCoordinates}, Zoom: ${zoomLevel}`);
+        }
+      }
     }
-  }, [centerCoordinates, zoomLevel, isMapInitialized]);
+  }, [centerCoordinates, zoomLevel, isMapInitialized, mapId]);
 
   // Placeholder for adding markers in the future
   // useEffect(() => {
-  //   if (mapRef.current && isMapInitialized && parkingSpots.length > 0) {
+  //   if (mapInstanceRef.current && isMapInitialized && parkingSpots.length > 0) {
   //     // Logic to create/update marker layer
   //   }
   // }, [parkingSpots, isMapInitialized]);
 
-  return <div ref={mapElementRef} className={className} id={`ol-map-${React.useId()}`} tabIndex={0} />;
+  return <div ref={mapElementRef} className={className} id={mapId} tabIndex={0} />;
 }
-
