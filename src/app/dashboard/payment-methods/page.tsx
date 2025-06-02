@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import Link from 'next/link';
-import { CreditCard, ShieldCheck, Trash2, PlusCircle, Edit3, AlertTriangle, CheckCircle } from 'lucide-react';
+import { CreditCard, ShieldCheck, Trash2, PlusCircle, Edit3, AlertTriangle, CheckCircle, Info } from 'lucide-react';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
@@ -40,27 +40,48 @@ export default function PaymentMethodsPage() {
     }, 1000);
   }, []);
 
-  const handleAddMethod = (newMethod: Omit<PaymentMethod, 'id'>) => {
-    const newMethodWithId = { ...newMethod, id: `pm${Date.now()}` };
-    if (newMethodWithId.isDefault) {
+  // formData includes all potential fields from the dialog
+  const handleAddMethod = (formData: PaymentMethodFormData) => {
+    const newMethodForState: PaymentMethod = {
+        id: `pm${Date.now()}`,
+        type: formData.type,
+        details: formData.details, // This is the card nickname for cards, or UPI/Wallet ID
+        isDefault: formData.isDefault,
+        expiryDate: formData.type === 'card' ? formData.expiryDate : undefined,
+    };
+    // formData.actualCardNumber and formData.cvv are "sent to backend" but not stored in UI state
+    console.log("Simulating sending to backend (not stored in UI state):", { actualCardNumber: formData.actualCardNumber, cvv: formData.cvv });
+
+
+    if (newMethodForState.isDefault) {
         setPaymentMethods(prev => 
-            [newMethodWithId, ...prev.map(p => ({...p, isDefault: false}))]
+            [newMethodForState, ...prev.map(p => ({...p, isDefault: false}))]
         );
     } else {
-        setPaymentMethods(prev => [newMethodWithId, ...prev]);
+        setPaymentMethods(prev => [newMethodForState, ...prev]);
     }
-    toast({ title: "Payment Method Added", description: `${newMethod.details} has been saved.` });
+    toast({ title: "Payment Method Added", description: `${newMethodForState.details} has been saved.` });
     setIsAddDialogOpen(false);
   };
 
-  const handleEditMethod = (updatedMethod: PaymentMethod) => {
+  const handleEditMethod = (updatedMethodData: PaymentMethodFormData, existingMethodId: string) => {
+     const updatedMethodForState: PaymentMethod = {
+        id: existingMethodId,
+        type: updatedMethodData.type,
+        details: updatedMethodData.details,
+        isDefault: updatedMethodData.isDefault,
+        expiryDate: updatedMethodData.type === 'card' ? updatedMethodData.expiryDate : undefined,
+    };
+    // updatedMethodData.actualCardNumber and updatedMethodData.cvv are "sent to backend"
+    console.log("Simulating sending updated data to backend (not stored in UI state):", { actualCardNumber: updatedMethodData.actualCardNumber, cvv: updatedMethodData.cvv });
+
     setPaymentMethods(prev => {
-        if (updatedMethod.isDefault) {
-            return prev.map(p => p.id === updatedMethod.id ? updatedMethod : {...p, isDefault: false});
+        if (updatedMethodForState.isDefault) {
+            return prev.map(p => p.id === existingMethodId ? updatedMethodForState : {...p, isDefault: false});
         }
-        return prev.map(p => p.id === updatedMethod.id ? updatedMethod : p);
+        return prev.map(p => p.id === existingMethodId ? updatedMethodForState : p);
     });
-    toast({ title: "Payment Method Updated", description: `${updatedMethod.details} has been updated.` });
+    toast({ title: "Payment Method Updated", description: `${updatedMethodForState.details} has been updated.` });
     setEditingMethod(null);
   };
 
@@ -92,7 +113,7 @@ export default function PaymentMethodsPage() {
           <PaymentMethodFormDialog
             title="Add New Payment Method"
             description="Securely save a new payment option."
-            onSave={handleAddMethod}
+            onSave={(data) => handleAddMethod(data)}
             onClose={() => setIsAddDialogOpen(false)}
             isOnlyMethod={paymentMethods.length === 0}
           />
@@ -126,7 +147,7 @@ export default function PaymentMethodsPage() {
                                 title="Edit Payment Method"
                                 description="Update your payment details."
                                 paymentMethod={editingMethod}
-                                onSave={handleEditMethod}
+                                onSave={(data) => handleEditMethod(data, editingMethod.id)}
                                 onClose={() => setEditingMethod(null)}
                                 isOnlyMethod={paymentMethods.length === 1}
                             />
@@ -167,41 +188,92 @@ export default function PaymentMethodsPage() {
   );
 }
 
+interface PaymentMethodFormData {
+    type: PaymentMethod['type'];
+    details: string; // For Card: nickname/label. For UPI/Wallet: actual ID/name.
+    expiryDate?: string; // MM/YY format, only for card
+    isDefault: boolean;
+    actualCardNumber?: string; // Only for card, 12 digits
+    cvv?: string; // Only for card, 3 digits
+}
+
 interface PaymentMethodFormDialogProps {
   title: string;
   description: string;
-  paymentMethod?: PaymentMethod | null;
-  onSave: (data: PaymentMethod | Omit<PaymentMethod, 'id'>) => void;
+  paymentMethod?: PaymentMethod | null; // Existing method for editing
+  onSave: (data: PaymentMethodFormData) => void;
   onClose: () => void;
   isOnlyMethod?: boolean;
 }
 
 function PaymentMethodFormDialog({ title, description, paymentMethod, onSave, onClose, isOnlyMethod }: PaymentMethodFormDialogProps) {
   const [type, setType] = useState<PaymentMethod['type']>(paymentMethod?.type || 'card');
-  const [details, setDetails] = useState(paymentMethod?.details || '');
-  const [expiryDate, setExpiryDate] = useState(paymentMethod?.expiryDate || '');
+  
+  // For UPI/Wallet, 'detailsInput' holds the direct ID/name.
+  // For Card, 'detailsInput' holds the nickname/label.
+  const [detailsInput, setDetailsInput] = useState(paymentMethod?.details || '');
+  
+  const [actualCardNumber, setActualCardNumber] = useState(''); // Only for card type
+  const [expiryDate, setExpiryDate] = useState(paymentMethod?.expiryDate || ''); // Only for card type
+  const [cvv, setCvv] = useState(''); // Only for card type
+  
   const [isDefault, setIsDefault] = useState(paymentMethod ? paymentMethod.isDefault : (isOnlyMethod || false));
 
-  const handleSubmit = () => {
-    if (!details) {
-      toast({ title: "Validation Error", description: "Payment details are required.", variant: "destructive" });
-      return;
-    }
-    if (type === 'card' && !expiryDate) {
-      toast({ title: "Validation Error", description: "Expiry date is required for cards.", variant: "destructive" });
-      return;
-    }
-
-    const data = { type, details, expiryDate: type === 'card' ? expiryDate : undefined, isDefault };
+  useEffect(() => {
     if (paymentMethod) {
-      onSave({ ...paymentMethod, ...data });
+        setType(paymentMethod.type);
+        setDetailsInput(paymentMethod.details); // This is the nickname for cards
+        setExpiryDate(paymentMethod.expiryDate || '');
+        setIsDefault(paymentMethod.isDefault);
+        // Card number and CVV are not pre-filled for editing for security
+        setActualCardNumber('');
+        setCvv('');
     } else {
-      onSave(data);
+        // Reset for add new
+        setType('card');
+        setDetailsInput('');
+        setActualCardNumber('');
+        setExpiryDate('');
+        setCvv('');
+        setIsDefault(isOnlyMethod || false);
     }
+  }, [paymentMethod, isOnlyMethod]);
+
+
+  const handleSubmit = () => {
+    const dataToSave: PaymentMethodFormData = {
+        type,
+        details: detailsInput, // For card, this is the nickname. For others, the main detail.
+        isDefault,
+        expiryDate: type === 'card' ? expiryDate : undefined,
+        actualCardNumber: type === 'card' ? actualCardNumber : undefined,
+        cvv: type === 'card' ? cvv : undefined,
+    };
+
+    // Validation
+    if (type === 'card') {
+        if (!detailsInput.trim()) {
+             toast({ title: "Validation Error", description: "Card nickname/label is required.", variant: "destructive" }); return;
+        }
+        if (!actualCardNumber || !/^\d{12}$/.test(actualCardNumber)) {
+            toast({ title: "Validation Error", description: "Card number must be exactly 12 digits.", variant: "destructive" }); return;
+        }
+        if (!expiryDate || !/^(0[1-9]|1[0-2])\/\d{2}$/.test(expiryDate)) {
+            toast({ title: "Validation Error", description: "Expiry date must be in MM/YY format.", variant: "destructive" }); return;
+        }
+        if (!cvv || !/^\d{3}$/.test(cvv)) {
+            toast({ title: "Validation Error", description: "CVV must be exactly 3 digits.", variant: "destructive" }); return;
+        }
+    } else { // UPI or Wallet
+        if (!detailsInput.trim()) {
+            toast({ title: "Validation Error", description: (type === 'upi' ? "UPI ID" : "Wallet name") + " is required.", variant: "destructive" }); return;
+        }
+    }
+    onSave(dataToSave);
   };
 
   return (
-    <DialogContent>
+    <DialogContent className="sm:max-w-[550px]">
       <DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription>{description}</DialogDescription></DialogHeader>
       <div className="grid gap-4 py-4">
         <div className="grid grid-cols-4 items-center gap-4">
@@ -215,17 +287,42 @@ function PaymentMethodFormDialog({ title, description, paymentMethod, onSave, on
             </SelectContent>
           </Select>
         </div>
-        <div className="grid grid-cols-4 items-center gap-4">
-          <Label htmlFor="details" className="text-right col-span-1 text-sm">Details</Label>
-          <Input id="details" value={details} onChange={(e) => setDetails(e.target.value)} className="col-span-3" placeholder={type === 'card' ? "Card Number (e.g. Visa **** 1234)" : type === 'upi' ? "UPI ID (e.g. user@oksbi)" : "Wallet Name (e.g. Paytm)"} />
-        </div>
-        {type === 'card' && (
+
+        {type === 'card' ? (
+          <>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="cardNickname" className="text-right col-span-1 text-sm">Nickname</Label>
+              <Input id="cardNickname" value={detailsInput} onChange={(e) => setDetailsInput(e.target.value)} className="col-span-3" placeholder="e.g., My Visa ending 1234" />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="actualCardNumber" className="text-right col-span-1 text-sm">Card Number</Label>
+              <Input id="actualCardNumber" value={actualCardNumber} onChange={(e) => setActualCardNumber(e.target.value.replace(/\D/g, '').slice(0,12))} className="col-span-3" placeholder="12-digit card number" maxLength={12} />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="expiryDate" className="text-right col-span-1 text-sm">Expiry</Label>
+                <Input id="expiryDate" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className="col-span-3" placeholder="MM/YY" maxLength={5} />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="cvv" className="text-right col-span-1 text-sm">CVV</Label>
+              <Input id="cvv" type="password" value={cvv} onChange={(e) => setCvv(e.target.value.replace(/\D/g, '').slice(0,3))} className="col-span-3" placeholder="3-digit CVV" maxLength={3} />
+            </div>
+            <Card className="col-span-4 bg-destructive/10 border-destructive/30">
+                <CardContent className="p-3 text-xs text-destructive-foreground flex items-start gap-2">
+                    <Info className="h-4 w-4 mt-0.5 shrink-0 text-destructive"/>
+                    <div>
+                        <strong>Security Note:</strong> For your protection, CVV numbers are used for immediate verification only and are never stored by our system. You will need to enter it for relevant future transactions if required by the gateway.
+                    </div>
+                </CardContent>
+            </Card>
+          </>
+        ) : ( // UPI or Wallet
           <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="expiryDate" className="text-right col-span-1 text-sm">Expiry (MM/YY)</Label>
-            <Input id="expiryDate" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className="col-span-3" placeholder="MM/YY" />
+            <Label htmlFor="details" className="text-right col-span-1 text-sm">{type === 'upi' ? 'UPI ID' : 'Wallet Name'}</Label>
+            <Input id="details" value={detailsInput} onChange={(e) => setDetailsInput(e.target.value)} className="col-span-3" placeholder={type === 'upi' ? "e.g. user@oksbi" : "e.g. Paytm Wallet"} />
           </div>
         )}
-        <div className="flex items-center space-x-2 col-start-2 col-span-3">
+        
+        <div className="flex items-center space-x-2 col-start-2 col-span-3 pt-2">
             <Switch id="isDefault" checked={isDefault} onCheckedChange={setIsDefault} disabled={isOnlyMethod && paymentMethod?.isDefault}/>
             <Label htmlFor="isDefault">Set as default payment method</Label>
         </div>
@@ -237,3 +334,5 @@ function PaymentMethodFormDialog({ title, description, paymentMethod, onSave, on
     </DialogContent>
   );
 }
+
+    
