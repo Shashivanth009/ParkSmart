@@ -17,7 +17,7 @@ import { useEffect } from 'react';
 
 const profileSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
-  email: z.string().email(), 
+  email: z.string().email(),
   phone: z.string().optional().refine(val => !val || /^[+]?[0-9]{10,15}$/.test(val), {
     message: "Invalid phone number format.",
   }),
@@ -41,12 +41,23 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
+    defaultValues: { // Initialize defaultValues directly from the prop
+      name: userProfile.name || "",
+      email: userProfile.email || "",
+      phone: userProfile.phone || "",
+      avatarUrl: userProfile.avatarUrl || "", // Handles null or undefined from schema
+      defaultVehiclePlate: userProfile.preferences?.defaultVehiclePlate || "",
+      requireCovered: userProfile.preferences?.requireCovered || false,
+      requireEVCharging: userProfile.preferences?.requireEVCharging || false,
+    },
   });
 
+  // This useEffect will now update the form if the userProfile prop itself changes
+  // *after* the initial render. defaultValues handles the initial state.
   useEffect(() => {
     form.reset({
       name: userProfile.name || "",
-      email: userProfile.email || "", 
+      email: userProfile.email || "",
       phone: userProfile.phone || "",
       avatarUrl: userProfile.avatarUrl || "",
       defaultVehiclePlate: userProfile.preferences?.defaultVehiclePlate || "",
@@ -59,7 +70,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
   async function processSubmit(values: ProfileFormValues) {
     const submitData = {
         ...values,
-        avatarUrl: values.avatarUrl || undefined, // Ensure empty string becomes undefined
+        avatarUrl: values.avatarUrl || undefined, // Ensure empty string becomes undefined for Firestore if desired
         preferences: {
             defaultVehiclePlate: values.defaultVehiclePlate || undefined,
             requireCovered: values.requireCovered,
@@ -68,7 +79,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
     };
     await handleFormSubmit(submitData);
   }
-  
+
   const currentAvatar = form.watch("avatarUrl") || userProfile.avatarUrl;
   const currentName = form.watch("name") || userProfile.name;
 
@@ -93,8 +104,9 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
                   </Avatar>
                   <FormControl>
                     <div className="flex items-center gap-2 w-full max-w-sm mx-auto">
+                      {/* Ensure field.value is never undefined for the Input */}
                       <Input type="url" placeholder="Image URL for avatar" {...field} value={field.value ?? ""} className="text-xs"/>
-                      <Button type="button" variant="outline" size="icon" className="shrink-0" 
+                      <Button type="button" variant="outline" size="icon" className="shrink-0"
                         onClick={() => alert("File upload for avatar coming soon! For now, please use a URL.")}>
                         <UploadCloud className="h-4 w-4"/>
                       </Button>
@@ -134,6 +146,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Phone Number (Optional)</FormLabel>
+                  {/* Ensure field.value is never undefined for the Input */}
                   <FormControl><Input type="tel" placeholder="+1 234 567 8900" {...field} value={field.value ?? ""} /></FormControl>
                   <FormMessage />
                 </FormItem>
@@ -154,6 +167,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Default Vehicle Plate (Optional)</FormLabel>
+                  {/* Ensure field.value is never undefined for the Input */}
                   <FormControl><Input placeholder="XYZ 123" {...field} value={field.value ?? ""} /></FormControl>
                   <FormDescription>Enter your most frequently used vehicle's number plate.</FormDescription>
                   <FormMessage />
