@@ -96,11 +96,12 @@ export default function HomePage() {
             </h2>
             <Card className="aspect-[16/6] bg-muted/30 flex items-center justify-center shadow-lg rounded-xl relative overflow-hidden">
                 <Image 
-                    src="https://placehold.co/1200x450.png/2a2f3a/e0e0e0?text=Map+Area+Placeholder" 
+                    src="https://placehold.co/1200x450.png" 
                     alt="Map Area Placeholder"
-                    layout="fill"
-                    objectFit="cover"
+                    fill={true}
+                    className="object-cover"
                     data-ai-hint="map illustration city"
+                    priority
                 />
                 <div className="absolute inset-0 flex items-center justify-center bg-black/30">
                     <p className="text-xl text-white/80 p-4 text-center">Interactive map feature is currently simplified. Search by location above.</p>
@@ -213,3 +214,5 @@ export default function HomePage() {
     </div>
   );
 }
+
+    

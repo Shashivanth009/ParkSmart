@@ -242,11 +242,12 @@ function SearchPageComponent() {
         
         <div className="mb-8 h-[300px] md:h-[400px] rounded-lg overflow-hidden shadow-xl bg-muted flex items-center justify-center relative">
             <Image 
-                src="https://placehold.co/1200x400.png/2a2f3a/e0e0e0?text=Map+View+Placeholder" 
+                src="https://placehold.co/1200x400.png" 
                 alt="Map View Placeholder"
-                layout="fill"
-                objectFit="cover"
+                fill={true}
+                className="object-cover"
                 data-ai-hint="city map illustration"
+                priority
             />
             <div className="absolute inset-0 flex items-center justify-center bg-black/40">
                 <div className="text-center p-4">
@@ -310,3 +311,5 @@ export default function SearchPage() {
     </Suspense>
   );
 }
+
+    

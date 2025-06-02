@@ -1,3 +1,4 @@
+
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
@@ -19,6 +20,13 @@ const nextConfig: NextConfig = {
     ],
     unoptimized: true, // Required for static export with next/image
   },
+  experimental: {
+    allowedDevOrigins: [
+      "https://6000-firebase-studio-1747935835035.cluster-ejd22kqny5htuv5dfowoyipt52.cloudworkstations.dev"
+    ],
+  },
 };
 
 export default nextConfig;
+
+    
