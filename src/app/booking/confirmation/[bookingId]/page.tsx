@@ -13,8 +13,8 @@ import Link from 'next/link';
 
 interface BookingDetails {
   bookingId: string;
-  spaceName: string;
-  spaceAddress: string;
+  facilityName: string;
+  facilityAddress: string;
   startTime: string;
   endTime: string;
   totalCost: number;
@@ -31,24 +31,29 @@ function ConfirmationPageComponent() {
 
   useEffect(() => {
     const bookingId = params.bookingId as string;
-    const spaceName = searchParams.get('spaceName') || 'N/A';
-    const spaceAddress = searchParams.get('address') || 'N/A';
+    // Use facilityName and facilityAddress as per updated Booking type
+    const facilityName = searchParams.get('spaceName') || searchParams.get('facilityName') || 'N/A'; 
+    const facilityAddress = searchParams.get('address') || searchParams.get('facilityAddress') || 'N/A';
     const startTime = searchParams.get('startTime');
     const endTime = searchParams.get('endTime');
     const cost = searchParams.get('cost');
     const vehiclePlate = searchParams.get('vehiclePlate');
 
     if (!bookingId || !startTime || !endTime || !cost) {
-      // Handle missing essential data - redirect or show error
       console.error("Missing booking confirmation details.");
-      router.replace("/dashboard/bookings"); // Or an error page
+      toast({
+        title: "Confirmation Error",
+        description: "Could not load all booking details. Please check 'My Bookings'.",
+        variant: "destructive",
+      });
+      router.replace("/dashboard/bookings"); 
       return;
     }
 
     setBookingDetails({
       bookingId,
-      spaceName,
-      spaceAddress,
+      facilityName,
+      facilityAddress,
       startTime,
       endTime,
       totalCost: parseFloat(cost),
@@ -58,9 +63,11 @@ function ConfirmationPageComponent() {
   }, [params, searchParams, router]);
 
   const handleNavigate = () => {
-    // Mock navigation. In a real app, this would open a map app or in-app map.
-    alert(`Navigating to ${bookingDetails?.spaceAddress}. This is a mock navigation feature.`);
-    // Example: window.open(`https://maps.google.com/?q=${encodeURIComponent(bookingDetails.spaceAddress)}`, '_blank');
+    if (bookingDetails?.facilityAddress) {
+        window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(bookingDetails.facilityAddress)}`, '_blank');
+    } else {
+        alert("Navigation address not available.");
+    }
   };
 
   if (isLoading) {
@@ -100,18 +107,18 @@ function ConfirmationPageComponent() {
                 <CheckCircle2 className="h-16 w-16 text-green-500 icon-glow" />
               </div>
               <CardTitle className="text-2xl">Thank You for Your Booking!</CardTitle>
-              <CardDescription>Your parking spot at {bookingDetails.spaceName} is reserved.</CardDescription>
+              <CardDescription>Your parking spot at {bookingDetails.facilityName} is reserved.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 text-left">
               <h3 className="text-lg font-semibold text-center mb-3">Booking Summary (ID: {bookingDetails.bookingId})</h3>
               <div className="p-4 border rounded-lg bg-muted/30 space-y-2">
-                <p className="flex items-start"><MapPin className="w-5 h-5 mr-3 mt-0.5 text-primary icon-glow-primary flex-shrink-0" /> <strong>Location:</strong> {bookingDetails.spaceName}<br/><span className="ml-[27px] text-sm text-muted-foreground">{bookingDetails.spaceAddress}</span></p>
+                <p className="flex items-start"><MapPin className="w-5 h-5 mr-3 mt-0.5 text-primary icon-glow-primary flex-shrink-0" /> <strong>Location:</strong> {bookingDetails.facilityName}<br/><span className="ml-[27px] text-sm text-muted-foreground">{bookingDetails.facilityAddress}</span></p>
                 <p className="flex items-center"><CalendarDays className="w-5 h-5 mr-3 text-primary icon-glow-primary" /> <strong>Date:</strong> {format(new Date(bookingDetails.startTime), "MMMM d, yyyy")}</p>
                 <p className="flex items-center"><Clock className="w-5 h-5 mr-3 text-primary icon-glow-primary" /> <strong>Time:</strong> {format(new Date(bookingDetails.startTime), "p")} - {format(new Date(bookingDetails.endTime), "p")}</p>
                 {bookingDetails.vehiclePlate && <p className="flex items-center"><Car className="w-5 h-5 mr-3 text-primary icon-glow-primary" /> <strong>Vehicle:</strong> {bookingDetails.vehiclePlate}</p>}
                 <p className="flex items-center text-lg font-semibold"><CircleDollarSign className="w-5 h-5 mr-3 text-primary icon-glow-primary" /> <strong>Total Cost:</strong> ${bookingDetails.totalCost.toFixed(2)}</p>
               </div>
-              <p className="text-xs text-muted-foreground text-center pt-2">A confirmation email has been sent to your registered email address.</p>
+              <p className="text-xs text-muted-foreground text-center pt-2">A confirmation email has been sent to your registered email address (mock).</p>
               {bookingDetails.vehiclePlate && (
                 <p className="text-xs text-muted-foreground text-center pt-1">
                   Tip: If your parking facility supports License Plate Recognition (LPR), your vehicle may be automatically recognized for entry.
@@ -141,3 +148,6 @@ export default function BookingConfirmationPage() {
     </Suspense>
   );
 }
+
+// Helper for toast, can be moved to a util if used elsewhere
+import { toast } from '@/hooks/use-toast';

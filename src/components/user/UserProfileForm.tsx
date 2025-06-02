@@ -12,8 +12,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/hooks/useAuth";
-import { UploadCloud, Edit2 } from "lucide-react";
-import { useEffect, useRef } from 'react';
+import { UploadCloud, Edit2, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from 'react';
 import { toast } from '@/hooks/use-toast';
 
 const profileSchema = z.object({
@@ -22,14 +22,14 @@ const profileSchema = z.object({
   phone: z.string().optional().refine(val => !val || /^[+]?[0-9]{10,15}$/.test(val), {
     message: "Invalid phone number format.",
   }),
-  avatarUrl: z.string().optional().or(z.literal("")).or(z.null()), // Accepts URLs and Data URLs
+  avatarUrl: z.string().optional().or(z.literal("")).or(z.null()), 
   
-  defaultVehiclePlate: z.string().optional().refine(val => !val || /^[A-Z0-9\s-]{3,10}$/i.test(val), {
+  defaultVehiclePlate: z.string().optional().nullable().refine(val => !val || /^[A-Z0-9\s-]{3,10}$/i.test(val), {
     message: "Invalid vehicle plate format (3-10 alphanumeric chars, spaces, hyphens)."
   }),
-  defaultVehicleMake: z.string().optional(),
-  defaultVehicleModel: z.string().optional(),
-  defaultVehicleColor: z.string().optional(),
+  defaultVehicleMake: z.string().optional().nullable(),
+  defaultVehicleModel: z.string().optional().nullable(),
+  defaultVehicleColor: z.string().optional().nullable(),
 
   requireCovered: z.boolean().optional(),
   requireEVCharging: z.boolean().optional(),
@@ -48,6 +48,7 @@ interface UserProfileFormProps {
 export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: UserProfileFormProps) {
   const { loading: authLoading } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
@@ -56,10 +57,10 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
       email: userProfile.email || "",
       phone: userProfile.phone || "",
       avatarUrl: userProfile.avatarUrl || "",
-      defaultVehiclePlate: userProfile.preferences?.defaultVehiclePlate || "",
-      defaultVehicleMake: userProfile.preferences?.defaultVehicleMake || "",
-      defaultVehicleModel: userProfile.preferences?.defaultVehicleModel || "",
-      defaultVehicleColor: userProfile.preferences?.defaultVehicleColor || "",
+      defaultVehiclePlate: userProfile.preferences?.defaultVehiclePlate || null,
+      defaultVehicleMake: userProfile.preferences?.defaultVehicleMake || null,
+      defaultVehicleModel: userProfile.preferences?.defaultVehicleModel || null,
+      defaultVehicleColor: userProfile.preferences?.defaultVehicleColor || null,
       requireCovered: userProfile.preferences?.requireCovered || false,
       requireEVCharging: userProfile.preferences?.requireEVCharging || false,
       communicationBookingEmails: userProfile.preferences?.communication?.bookingEmails !== undefined ? userProfile.preferences.communication.bookingEmails : true,
@@ -73,10 +74,10 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
       email: userProfile.email || "",
       phone: userProfile.phone || "",
       avatarUrl: userProfile.avatarUrl || "",
-      defaultVehiclePlate: userProfile.preferences?.defaultVehiclePlate || "",
-      defaultVehicleMake: userProfile.preferences?.defaultVehicleMake || "",
-      defaultVehicleModel: userProfile.preferences?.defaultVehicleModel || "",
-      defaultVehicleColor: userProfile.preferences?.defaultVehicleColor || "",
+      defaultVehiclePlate: userProfile.preferences?.defaultVehiclePlate || null,
+      defaultVehicleMake: userProfile.preferences?.defaultVehicleMake || null,
+      defaultVehicleModel: userProfile.preferences?.defaultVehicleModel || null,
+      defaultVehicleColor: userProfile.preferences?.defaultVehicleColor || null,
       requireCovered: userProfile.preferences?.requireCovered || false,
       requireEVCharging: userProfile.preferences?.requireEVCharging || false,
       communicationBookingEmails: userProfile.preferences?.communication?.bookingEmails !== undefined ? userProfile.preferences.communication.bookingEmails : true,
@@ -86,26 +87,36 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
 
 
   async function processSubmit(values: ProfileFormValues) {
+    setIsSaving(true);
     const submitData: Partial<UserProfileType> = {
         name: values.name,
-        phone: values.phone, // Will be handled by useAuth to be null if empty
-        avatarUrl: values.avatarUrl, // Will be handled by useAuth
+        phone: values.phone || "", 
+        avatarUrl: values.avatarUrl, 
         preferences: {
-            ...(userProfile.preferences || {}), 
-            defaultVehiclePlate: values.defaultVehiclePlate,
-            defaultVehicleMake: values.defaultVehicleMake,
-            defaultVehicleModel: values.defaultVehicleModel,
-            defaultVehicleColor: values.defaultVehicleColor,
-            requireCovered: values.requireCovered,
-            requireEVCharging: values.requireEVCharging,
+            // ...(userProfile.preferences || {}), // This line might cause issues if userProfile.preferences is undefined. Initialize properly.
+            defaultVehiclePlate: values.defaultVehiclePlate || null,
+            defaultVehicleMake: values.defaultVehicleMake || null,
+            defaultVehicleModel: values.defaultVehicleModel || null,
+            defaultVehicleColor: values.defaultVehicleColor || null,
+            requireCovered: values.requireCovered || false,
+            requireEVCharging: values.requireEVCharging || false,
             communication: {
-                ...(userProfile.preferences?.communication || {}),
-                bookingEmails: values.communicationBookingEmails,
-                promotionalEmails: values.communicationPromotionalEmails,
+                // ...(userProfile.preferences?.communication || {}),
+                bookingEmails: values.communicationBookingEmails !== undefined ? values.communicationBookingEmails : true,
+                promotionalEmails: values.communicationPromotionalEmails || false,
             }
         }
     };
+    // Ensure preferences object exists if it was initially undefined
+     if (!submitData.preferences && userProfile.preferences) {
+        submitData.preferences = { ...userProfile.preferences };
+     } else if (!submitData.preferences) {
+        submitData.preferences = { communication: { bookingEmails: true, promotionalEmails: false }};
+     }
+
+
     await handleFormSubmit(submitData);
+    setIsSaving(false);
   }
 
   const currentAvatar = form.watch("avatarUrl") || userProfile.avatarUrl;
@@ -121,6 +132,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
       const reader = new FileReader();
       reader.onloadend = () => {
         form.setValue("avatarUrl", reader.result as string);
+        form.trigger("avatarUrl"); // Trigger validation if needed
       };
       reader.readAsDataURL(file);
     }
@@ -138,7 +150,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
             <FormField
               control={form.control}
               name="avatarUrl"
-              render={({ field }) => ( // field is not directly used for input but for form state
+              render={({ field }) => ( 
                 <FormItem className="flex flex-col items-center text-center">
                   <div className="relative group">
                     <Avatar className="w-24 h-24 mb-2 ring-2 ring-primary ring-offset-2 ring-offset-background">
@@ -152,6 +164,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
                       className="absolute bottom-0 right-0 rounded-full h-8 w-8 bg-background/80 group-hover:bg-primary/20"
                       onClick={() => fileInputRef.current?.click()}
                       title="Change profile picture"
+                      disabled={isSaving}
                     >
                       <Edit2 className="h-4 w-4 text-primary group-hover:text-primary-foreground" />
                     </Button>
@@ -163,6 +176,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
                       className="hidden" 
                       accept="image/*" 
                       onChange={handleAvatarChange}
+                      disabled={isSaving}
                     />
                   </FormControl>
                   <FormDescription className="text-xs mt-2">
@@ -178,7 +192,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Full Name</FormLabel>
-                  <FormControl><Input placeholder="Your full name" {...field} /></FormControl>
+                  <FormControl><Input placeholder="Your full name" {...field} disabled={isSaving} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -201,7 +215,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Phone Number (Optional)</FormLabel>
-                  <FormControl><Input type="tel" placeholder="+1 234 567 8900" {...field} value={field.value ?? ""} /></FormControl>
+                  <FormControl><Input type="tel" placeholder="+1 234 567 8900" {...field} value={field.value ?? ""} disabled={isSaving} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -221,7 +235,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Default Vehicle Plate (Optional)</FormLabel>
-                  <FormControl><Input placeholder="XYZ 123" {...field} value={field.value ?? ""} /></FormControl>
+                  <FormControl><Input placeholder="XYZ 123" {...field} value={field.value ?? ""} disabled={isSaving} /></FormControl>
                   <FormDescription>Your most frequently used vehicle's number plate.</FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -234,7 +248,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Make (Optional)</FormLabel>
-                    <FormControl><Input placeholder="e.g., Toyota" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormControl><Input placeholder="e.g., Toyota" {...field} value={field.value ?? ""} disabled={isSaving}/></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -245,7 +259,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Model (Optional)</FormLabel>
-                    <FormControl><Input placeholder="e.g., Camry" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormControl><Input placeholder="e.g., Camry" {...field} value={field.value ?? ""} disabled={isSaving}/></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -256,7 +270,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Color (Optional)</FormLabel>
-                    <FormControl><Input placeholder="e.g., Blue" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormControl><Input placeholder="e.g., Blue" {...field} value={field.value ?? ""} disabled={isSaving}/></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -271,7 +285,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
                     <FormLabel>Prefer Covered Parking?</FormLabel>
                     <FormDescription>Prioritize covered spots in search results.</FormDescription>
                   </div>
-                  <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                  <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={isSaving} /></FormControl>
                 </FormItem>
               )}
             />
@@ -284,7 +298,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
                     <FormLabel>Need EV Charging?</FormLabel>
                     <FormDescription>Only show spots with EV charging facilities.</FormDescription>
                   </div>
-                  <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                  <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={isSaving} /></FormControl>
                 </FormItem>
               )}
             />
@@ -306,7 +320,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
                     <FormLabel>Booking Related Emails</FormLabel>
                     <FormDescription>Receive confirmations, reminders, and updates about your bookings.</FormDescription>
                   </div>
-                  <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                  <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={isSaving} /></FormControl>
                 </FormItem>
               )}
             />
@@ -319,15 +333,16 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
                     <FormLabel>Promotional Emails</FormLabel>
                     <FormDescription>Receive news, special offers, and updates from ParkSmart.</FormDescription>
                   </div>
-                  <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                  <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={isSaving} /></FormControl>
                 </FormItem>
               )}
             />
           </CardContent>
         </Card>
 
-        <Button type="submit" disabled={authLoading || form.formState.isSubmitting} className="w-full md:w-auto">
-          {authLoading || form.formState.isSubmitting ? "Saving Changes..." : "Save Changes"}
+        <Button type="submit" disabled={authLoading || isSaving || form.formState.isSubmitting} className="w-full md:w-auto">
+          {(authLoading || isSaving || form.formState.isSubmitting) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {authLoading || isSaving || form.formState.isSubmitting ? "Saving Changes..." : "Save Changes"}
         </Button>
       </form>
     </Form>

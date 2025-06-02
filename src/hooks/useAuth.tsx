@@ -22,7 +22,7 @@ import type { UserProfile } from '@/types';
 import { toast } from '@/hooks/use-toast';
 
 export interface AuthUser extends FirebaseUser {
-  profile: UserProfile; // Made non-optional
+  profile: UserProfile; 
 }
 
 interface AuthContextType {
@@ -57,7 +57,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const userDocSnap = await getDoc(userDocRef);
       if (userDocSnap.exists()) {
-        return userDocSnap.data() as UserProfile;
+        const data = userDocSnap.data() as UserProfile;
+        // Ensure preferences and communication objects exist with defaults if not present in DB
+        data.preferences = {
+            defaultVehiclePlate: data.preferences?.defaultVehiclePlate || null,
+            defaultVehicleMake: data.preferences?.defaultVehicleMake || null,
+            defaultVehicleModel: data.preferences?.defaultVehicleModel || null,
+            defaultVehicleColor: data.preferences?.defaultVehicleColor || null,
+            requireCovered: data.preferences?.requireCovered || false,
+            requireEVCharging: data.preferences?.requireEVCharging || false,
+            communication: {
+                bookingEmails: data.preferences?.communication?.bookingEmails !== undefined ? data.preferences.communication.bookingEmails : true,
+                promotionalEmails: data.preferences?.communication?.promotionalEmails || false,
+            }
+        };
+        return data;
       } else {
         console.log("fetchUserProfileData: No profile document found for user:", firebaseUser.uid);
         return null;
@@ -84,7 +98,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       updatedAt: serverTimestamp(),
     };
 
-    // Handle top-level fields
     if (dataToUpdate.hasOwnProperty('name')) {
       firestorePayload.name = dataToUpdate.name;
     }
@@ -92,25 +105,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       firestorePayload.phone = (dataToUpdate.phone === undefined || dataToUpdate.phone === "") ? null : dataToUpdate.phone;
     }
     if (dataToUpdate.hasOwnProperty('avatarUrl')) {
-        // Store Data URL or regular URL in Firestore. Null if cleared.
       firestorePayload.avatarUrl = (dataToUpdate.avatarUrl === undefined || dataToUpdate.avatarUrl === "" || dataToUpdate.avatarUrl === null) ? null : dataToUpdate.avatarUrl;
     }
     
-    // Handle nested preferences
     if (dataToUpdate.preferences) {
-      const currentPrefs = user?.profile.preferences || {};
-      const newPrefsPayload: UserProfile['preferences'] = {
-        defaultVehiclePlate: currentPrefs.defaultVehiclePlate,
-        defaultVehicleMake: currentPrefs.defaultVehicleMake,
-        defaultVehicleModel: currentPrefs.defaultVehicleModel,
-        defaultVehicleColor: currentPrefs.defaultVehicleColor,
-        requireCovered: currentPrefs.requireCovered,
-        requireEVCharging: currentPrefs.requireEVCharging,
-        communication: {
-          bookingEmails: currentPrefs.communication?.bookingEmails,
-          promotionalEmails: currentPrefs.communication?.promotionalEmails,
-        }
-      };
+      const currentPrefs = user?.profile.preferences || {}; // Start with current local state or empty
+      const newPrefsPayload: UserProfile['preferences'] = { ...currentPrefs }; // Clone current preferences
+       if (!newPrefsPayload.communication) { // Ensure communication object exists
+           newPrefsPayload.communication = { bookingEmails: true, promotionalEmails: false };
+       }
+
 
       if (dataToUpdate.preferences.hasOwnProperty('defaultVehiclePlate')) {
         newPrefsPayload.defaultVehiclePlate = (dataToUpdate.preferences.defaultVehiclePlate === undefined || dataToUpdate.preferences.defaultVehiclePlate === "") ? null : dataToUpdate.preferences.defaultVehiclePlate;
@@ -133,7 +137,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       if (dataToUpdate.preferences.communication) {
-        if (!newPrefsPayload.communication) newPrefsPayload.communication = {};
         if (dataToUpdate.preferences.communication.hasOwnProperty('bookingEmails')) {
           newPrefsPayload.communication.bookingEmails = dataToUpdate.preferences.communication.bookingEmails;
         }
@@ -151,21 +154,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     
     if (dataToUpdate.hasOwnProperty('avatarUrl')) {
         const newAvatarUrl = dataToUpdate.avatarUrl;
-        if (newAvatarUrl === "" || newAvatarUrl === null) { // User cleared avatar
+        if (newAvatarUrl === "" || newAvatarUrl === null) { 
             if (auth.currentUser.photoURL !== null) {
                 authProfileUpdates.photoURL = null;
             }
         } else if (newAvatarUrl && !newAvatarUrl.startsWith('data:') && newAvatarUrl !== auth.currentUser.photoURL) {
-            // Only update Firebase Auth photoURL if it's NOT a Data URL and it's different
             authProfileUpdates.photoURL = newAvatarUrl;
         }
-        // If newAvatarUrl is a Data URL, we do NOT update authProfileUpdates.photoURL to avoid length errors.
-        // The Data URL is saved in Firestore's avatarUrl.
     }
     
-    console.log("Attempting to update Firestore with payload:", JSON.stringify(firestorePayload, null, 2));
-    console.log("Attempting to update Firebase Auth profile with:", JSON.stringify(authProfileUpdates, null, 2));
-
     try {
       await updateDoc(userDocRef, firestorePayload);
       
@@ -173,17 +170,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           await updateFirebaseProfile(auth.currentUser, authProfileUpdates);
       }
 
-      // Optimistically update local user state, then re-fetch for consistency
       if (user && user.uid === userId && auth.currentUser) {
-        const updatedAuthUser = { ...auth.currentUser } as FirebaseUser; // Get fresh auth.currentUser
+        const updatedAuthUser = { ...auth.currentUser } as FirebaseUser; 
         
-        // Merge changes into local profile state for immediate UI update
         const newLocalProfile: UserProfile = {
-            ...user.profile, // Start with existing local profile
-            ...(firestorePayload as Partial<UserProfile>), // Overlay Firestore changes
-            name: firestorePayload.name || user.profile.name, // Ensure name is updated
-            avatarUrl: firestorePayload.hasOwnProperty('avatarUrl') ? firestorePayload.avatarUrl : user.profile.avatarUrl, // Handle null for avatarUrl
-            updatedAt: firestorePayload.updatedAt, // This will be a server timestamp placeholder locally
+            ...user.profile, 
+            ...(firestorePayload as Partial<UserProfile>), 
+            name: firestorePayload.name || user.profile.name, 
+            avatarUrl: firestorePayload.hasOwnProperty('avatarUrl') ? firestorePayload.avatarUrl : user.profile.avatarUrl,
+            updatedAt: firestorePayload.updatedAt, 
         };
          if (firestorePayload.preferences) {
             newLocalProfile.preferences = firestorePayload.preferences;
@@ -194,11 +189,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             profile: newLocalProfile,
         });
         
-        // Re-fetch after a short delay to get server-generated timestamps and ensure consistency
         setTimeout(async () => {
           if (auth.currentUser) { 
               const freshProfile = await fetchUserProfileData(auth.currentUser);
-              if (freshProfile) {
+              if (freshProfile && auth.currentUser) { // Re-check auth.currentUser
                   setUser(currUser => currUser ? ({
                       ...auth.currentUser!, 
                       profile: freshProfile
@@ -269,10 +263,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 avatarUrl: firestoreProfile.avatarUrl || firebaseUser.photoURL,
                 phone: firestoreProfile.phone || "",
                 preferences: { 
-                    defaultVehiclePlate: firestoreProfile.preferences?.defaultVehiclePlate || "",
-                    defaultVehicleMake: firestoreProfile.preferences?.defaultVehicleMake || "",
-                    defaultVehicleModel: firestoreProfile.preferences?.defaultVehicleModel || "",
-                    defaultVehicleColor: firestoreProfile.preferences?.defaultVehicleColor || "",
+                    defaultVehiclePlate: firestoreProfile.preferences?.defaultVehiclePlate || null,
+                    defaultVehicleMake: firestoreProfile.preferences?.defaultVehicleMake || null,
+                    defaultVehicleModel: firestoreProfile.preferences?.defaultVehicleModel || null,
+                    defaultVehicleColor: firestoreProfile.preferences?.defaultVehicleColor || null,
                     requireCovered: firestoreProfile.preferences?.requireCovered === true,
                     requireEVCharging: firestoreProfile.preferences?.requireEVCharging === true,
                     communication: {
@@ -284,16 +278,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 updatedAt: firestoreProfile.updatedAt,
             };
           } else {
+            // Create a default profile if one doesn't exist in Firestore
+            const now = serverTimestamp() as Timestamp;
             effectiveProfile = {
               name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
               email: firebaseUser.email || '', 
               avatarUrl: firebaseUser.photoURL,
               phone: "",
+              createdAt: now, // For new profile
+              updatedAt: now, // For new profile
               preferences: {
-                defaultVehiclePlate: '',
-                defaultVehicleMake: '',
-                defaultVehicleModel: '',
-                defaultVehicleColor: '',
+                defaultVehiclePlate: null,
+                defaultVehicleMake: null,
+                defaultVehicleModel: null,
+                defaultVehicleColor: null,
                 requireCovered: false,
                 requireEVCharging: false,
                 communication: {
@@ -302,7 +300,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 }
               },
             };
-             console.log("No Firestore profile found, created default in-memory profile:", effectiveProfile);
+            // Attempt to save this new default profile to Firestore
+            if (db && firebaseInitialized) {
+                try {
+                    await setDoc(doc(db, 'users', firebaseUser.uid), effectiveProfile);
+                    console.log("Created new Firestore profile for user:", firebaseUser.uid);
+                } catch (dbError) {
+                    console.error("Failed to create new Firestore profile:", dbError);
+                    toast({title: "Profile Error", description: "Could not initialize user profile.", variant: "destructive"});
+                }
+            }
           }
           setUser({
               ...firebaseUser, 
@@ -411,7 +418,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           createdAt: now,
           updatedAt: now,
           preferences: { 
-            defaultVehiclePlate: '', defaultVehicleMake: '', defaultVehicleModel: '', defaultVehicleColor: '',
+            defaultVehiclePlate: null, defaultVehicleMake: null, defaultVehicleModel: null, defaultVehicleColor: null,
             requireCovered: false, requireEVCharging: false,
             communication: { bookingEmails: true, promotionalEmails: false } 
           }
@@ -523,7 +530,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         createdAt: now,
         updatedAt: now,
         preferences: { 
-            defaultVehiclePlate: '', defaultVehicleMake: '', defaultVehicleModel: '', defaultVehicleColor: '',
+            defaultVehiclePlate: null, defaultVehicleMake: null, defaultVehicleModel: null, defaultVehicleColor: null,
             requireCovered: false, requireEVCharging: false,
             communication: { bookingEmails: true, promotionalEmails: false } 
         }
@@ -678,4 +685,3 @@ export const useAuth = () => {
   }
   return context;
 };
-

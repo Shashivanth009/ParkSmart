@@ -1,3 +1,4 @@
+
 "use client";
 import { useState, useEffect } from 'react';
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -8,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { addHours, format } from 'date-fns';
 import type { Booking } from '@/types';
-import { Clock } from 'lucide-react';
+import { Clock, Loader2 } from 'lucide-react';
 
 const extendParkingSchema = z.object({
   extendDuration: z.number().min(1, "Must extend by at least 1 hour.").max(12, "Cannot extend more than 12 hours at a time."),
@@ -18,13 +19,14 @@ type ExtendParkingFormValues = z.infer<typeof extendParkingSchema>;
 
 interface ExtendParkingFormProps {
   currentBooking: Booking;
-  pricePerHour: number; // Price per hour for the current space
-  onExtend: (newEndTime: Date, additionalCost: number, extendDuration: number) => Promise<void>; // Returns new end time and additional cost
+  pricePerHour: number; 
+  onExtend: (newEndTime: Date, additionalCost: number, extendDuration: number) => Promise<void>; 
 }
 
 export function ExtendParkingForm({ currentBooking, pricePerHour, onExtend }: ExtendParkingFormProps) {
   const [newCalculatedEndTime, setNewCalculatedEndTime] = useState<Date | null>(null);
   const [additionalCost, setAdditionalCost] = useState<number>(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const form = useForm<ExtendParkingFormValues>({
     resolver: zodResolver(extendParkingSchema),
@@ -36,7 +38,7 @@ export function ExtendParkingForm({ currentBooking, pricePerHour, onExtend }: Ex
   const extendDuration = form.watch("extendDuration");
 
   useEffect(() => {
-    if (extendDuration > 0 && currentBooking.endTime) {
+    if (extendDuration > 0 && currentBooking.endTime && pricePerHour !== undefined) {
       const currentEndTimeDate = new Date(currentBooking.endTime);
       const newEndTime = addHours(currentEndTimeDate, extendDuration);
       setNewCalculatedEndTime(newEndTime);
@@ -49,9 +51,15 @@ export function ExtendParkingForm({ currentBooking, pricePerHour, onExtend }: Ex
 
   async function processSubmit(values: ExtendParkingFormValues) {
     if (newCalculatedEndTime) {
+      setIsSubmitting(true);
       await onExtend(newCalculatedEndTime, additionalCost, values.extendDuration);
-      form.reset(); // Reset form after successful extension
+      form.reset(); 
+      setIsSubmitting(false);
     }
+  }
+
+  if(pricePerHour === undefined) {
+    return <p className="text-sm text-muted-foreground text-center">Extension not available: pricing info missing.</p>
   }
 
   return (
@@ -66,6 +74,7 @@ export function ExtendParkingForm({ currentBooking, pricePerHour, onExtend }: Ex
               <Select 
                 onValueChange={(value) => field.onChange(parseInt(value))} 
                 defaultValue={String(field.value)}
+                disabled={isSubmitting}
               >
                 <FormControl>
                   <SelectTrigger>
@@ -74,7 +83,7 @@ export function ExtendParkingForm({ currentBooking, pricePerHour, onExtend }: Ex
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {[...Array(6).keys()].map(i => ( // Allow extending up to 6 hours for example
+                  {[...Array(6).keys()].map(i => ( 
                     <SelectItem key={i + 1} value={String(i + 1)}>{i + 1} hour{i + 1 > 1 ? 's' : ''}</SelectItem>
                   ))}
                 </SelectContent>
@@ -96,8 +105,9 @@ export function ExtendParkingForm({ currentBooking, pricePerHour, onExtend }: Ex
             Note: Extension is subject to availability and may not always be possible.
         </p>
 
-        <Button type="submit" className="w-full" disabled={!newCalculatedEndTime || form.formState.isSubmitting}>
-          {form.formState.isSubmitting ? "Processing Extension..." : "Confirm & Pay Extension"}
+        <Button type="submit" className="w-full" disabled={!newCalculatedEndTime || isSubmitting}>
+          {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          {isSubmitting ? "Processing Extension..." : "Confirm & Pay Extension"}
         </Button>
       </form>
     </Form>

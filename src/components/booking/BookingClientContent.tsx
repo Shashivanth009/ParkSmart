@@ -9,7 +9,7 @@ import { BookingForm } from '@/components/booking/BookingForm';
 import type { ParkingSpace, ParkingFeature } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Image from 'next/image';
-import { MapPin, DollarSign, Users, Star, Car, Loader2 } from 'lucide-react';
+import { MapPin, DollarSign, Users, Star, Car as CarIconLucide, Loader2 } from 'lucide-react'; // Renamed Car to avoid conflict
 import { featureIcons, featureLabels } from '@/types';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
@@ -24,11 +24,13 @@ const mockSpacesData: ParkingSpace[] = [
 // fetchSpaceDetails remains here as it's used by client-side logic
 const fetchSpaceDetails = async (spaceId: string): Promise<ParkingSpace | null> => {
   console.log("Fetching details for space:", spaceId);
+  // Simulate API delay
+  await new Promise(resolve => setTimeout(resolve, 500));
   return mockSpacesData.find(s => s.id === spaceId) || null;
 };
 
 const FeatureDisplay = ({ feature }: { feature: ParkingFeature }) => {
-  const Icon = featureIcons[feature] || Car;
+  const Icon = featureIcons[feature] || CarIconLucide;
   const label = featureLabels[feature] || feature.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase());
   return (
     <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-md">
@@ -46,11 +48,11 @@ export function BookingClientContent({ spaceIdFromParams }: BookingClientContent
   const router = useRouter();
   const pathname = usePathname();
   const { user, isAuthenticated, loading: authLoading } = useAuth();
-  const spaceId = spaceIdFromParams; // Use the prop
+  const spaceId = spaceIdFromParams; 
 
   const [space, setSpace] = useState<ParkingSpace | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [userDefaultVehiclePlate, setUserDefaultVehiclePlate] = useState<string | undefined>(undefined);
+  const [userDefaultVehiclePlate, setUserDefaultVehiclePlate] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -77,18 +79,34 @@ export function BookingClientContent({ spaceIdFromParams }: BookingClientContent
         router.push('/search');
     }
     
-    if(user && user.profile?.preferences?.defaultVehiclePlate) {
+    if(user && user.profile?.preferences) {
         setUserDefaultVehiclePlate(user.profile.preferences.defaultVehiclePlate);
     }
 
   }, [spaceId, isAuthenticated, authLoading, router, user, pathname]);
 
   const handleBookingSubmit = (formData: any, totalCost: number, endTime: Date) => {
+    if (!space) {
+        toast({title: "Booking Error", description: "Parking space details are missing.", variant: "destructive"});
+        return;
+    }
     console.log("Booking submitted:", { ...formData, spaceId, totalCost, endTime });
-    toast({ title: "Booking Initiated", description: `Processing your booking for ${space?.facilityName}. Total: $${totalCost.toFixed(2)}` });
+    toast({ title: "Booking Initiated", description: `Processing your booking for ${space.facilityName}. Total: $${totalCost.toFixed(2)}` });
     
     const mockBookingId = `bk_${Date.now()}`;
-    router.push(`/booking/confirmation/${mockBookingId}?spaceName=${encodeURIComponent(space?.facilityName || '')}&address=${encodeURIComponent(space?.facilityAddress || '')}&startTime=${encodeURIComponent(formData.date.toISOString())}&endTime=${encodeURIComponent(endTime.toISOString())}&cost=${totalCost}&vehiclePlate=${encodeURIComponent(formData.vehiclePlate || '')}`);
+    
+    // Construct query parameters for confirmation page
+    const queryParams = new URLSearchParams();
+    queryParams.set('spaceName', space.facilityName);
+    queryParams.set('address', space.facilityAddress);
+    queryParams.set('startTime', formData.date.toISOString()); // Assuming formData.date is the combined start date and time
+    queryParams.set('endTime', endTime.toISOString());
+    queryParams.set('cost', totalCost.toString());
+    if (formData.vehiclePlate) {
+      queryParams.set('vehiclePlate', formData.vehiclePlate);
+    }
+    
+    router.push(`/booking/confirmation/${mockBookingId}?${queryParams.toString()}`);
   };
 
   if (authLoading || isLoading) {

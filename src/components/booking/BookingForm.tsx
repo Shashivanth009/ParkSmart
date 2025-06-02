@@ -29,7 +29,7 @@ type BookingFormValues = z.infer<typeof bookingFormSchema>;
 interface BookingFormProps {
   space: ParkingSpace;
   onSubmit: (data: BookingFormValues, totalCost: number, endTime: Date) => void;
-  defaultVehiclePlate?: string;
+  defaultVehiclePlate?: string | null;
 }
 
 const generateTimeSlots = () => {
@@ -60,6 +60,9 @@ export function BookingForm({ space, onSubmit, defaultVehiclePlate }: BookingFor
   useEffect(() => {
     if (defaultVehiclePlate && defaultVehiclePlate !== form.getValues('vehiclePlate')) {
       form.setValue('vehiclePlate', defaultVehiclePlate);
+    }
+     if (defaultVehiclePlate === null && form.getValues('vehiclePlate') !== '') { // If user clears it in profile
+      form.setValue('vehiclePlate', '');
     }
   }, [defaultVehiclePlate, form]);
 

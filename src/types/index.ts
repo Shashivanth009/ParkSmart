@@ -32,10 +32,10 @@ export interface ParkingSpace {
 export interface Booking {
   id: string;
   spaceId: string;
-  spaceName: string;
-  spaceAddress: string;
-  startTime: string;
-  endTime: string;
+  facilityName: string; // Changed from spaceName for consistency with ParkingSpace
+  facilityAddress: string; // Changed from spaceAddress
+  startTime: string; // ISO string
+  endTime: string; // ISO string
   totalCost: number;
   status: 'upcoming' | 'active' | 'completed' | 'cancelled';
   vehiclePlate?: string;
@@ -47,10 +47,10 @@ export interface UserProfile {
   phone?: string;
   avatarUrl?: string | null;
   preferences?: {
-    defaultVehiclePlate?: string;
-    defaultVehicleMake?: string;
-    defaultVehicleModel?: string;
-    defaultVehicleColor?: string;
+    defaultVehiclePlate?: string | null; // Allow null for no preference
+    defaultVehicleMake?: string | null;
+    defaultVehicleModel?: string | null;
+    defaultVehicleColor?: string | null;
     requireCovered?: boolean;
     requireEVCharging?: boolean;
     communication?: {
