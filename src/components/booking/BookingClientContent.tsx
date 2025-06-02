@@ -90,23 +90,23 @@ export function BookingClientContent({ spaceIdFromParams }: BookingClientContent
         toast({title: "Booking Error", description: "Parking space details are missing.", variant: "destructive"});
         return;
     }
-    console.log("Booking submitted:", { ...formData, spaceId, totalCost, endTime });
-    toast({ title: "Booking Initiated", description: `Processing your booking for ${space.facilityName}. Total: $${totalCost.toFixed(2)}` });
+    console.log("Booking form submitted, proceeding to payment:", { ...formData, spaceId, totalCost, endTime });
+    toast({ title: "Proceeding to Payment", description: `Review your booking for ${space.facilityName}. Total: $${totalCost.toFixed(2)}` });
     
-    const mockBookingId = `bk_${Date.now()}`;
+    const mockBookingId = `bk_${Date.now()}`; // This is a temporary mock ID
     
-    // Construct query parameters for confirmation page
-    const queryParams = new URLSearchParams();
-    queryParams.set('spaceName', space.facilityName);
-    queryParams.set('address', space.facilityAddress);
-    queryParams.set('startTime', formData.date.toISOString()); // Assuming formData.date is the combined start date and time
-    queryParams.set('endTime', endTime.toISOString());
-    queryParams.set('cost', totalCost.toString());
+    // Construct query parameters for the payment page
+    const paymentQueryParams = new URLSearchParams();
+    paymentQueryParams.set('facilityName', space.facilityName);
+    paymentQueryParams.set('facilityAddress', space.facilityAddress);
+    paymentQueryParams.set('startTime', formData.date.toISOString()); 
+    paymentQueryParams.set('endTime', endTime.toISOString());
+    paymentQueryParams.set('cost', totalCost.toString());
     if (formData.vehiclePlate) {
-      queryParams.set('vehiclePlate', formData.vehiclePlate);
+      paymentQueryParams.set('vehiclePlate', formData.vehiclePlate);
     }
     
-    router.push(`/booking/confirmation/${mockBookingId}?${queryParams.toString()}`);
+    router.push(`/booking/payment/${mockBookingId}?${paymentQueryParams.toString()}`);
   };
 
   if (authLoading || isLoading) {

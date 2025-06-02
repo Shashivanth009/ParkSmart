@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { CheckCircle2, MapPin, CalendarDays, Clock, Car, CircleDollarSign, Navigation, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import Link from 'next/link';
+import { toast } from '@/hooks/use-toast'; // Ensure toast is imported
 
 interface BookingDetails {
   bookingId: string;
@@ -31,16 +32,16 @@ function ConfirmationPageComponent() {
 
   useEffect(() => {
     const bookingId = params.bookingId as string;
-    // Use facilityName and facilityAddress as per updated Booking type
-    const facilityName = searchParams.get('spaceName') || searchParams.get('facilityName') || 'N/A'; 
-    const facilityAddress = searchParams.get('address') || searchParams.get('facilityAddress') || 'N/A';
+    // Use facilityName and facilityAddress as per updated Booking type from payment/booking flow
+    const facilityName = searchParams.get('facilityName') || searchParams.get('spaceName') || 'N/A'; 
+    const facilityAddress = searchParams.get('facilityAddress') || searchParams.get('address') || 'N/A';
     const startTime = searchParams.get('startTime');
     const endTime = searchParams.get('endTime');
     const cost = searchParams.get('cost');
     const vehiclePlate = searchParams.get('vehiclePlate');
 
-    if (!bookingId || !startTime || !endTime || !cost) {
-      console.error("Missing booking confirmation details.");
+    if (!bookingId || !facilityName || facilityName === 'N/A' || !facilityAddress || facilityAddress === 'N/A' || !startTime || !endTime || !cost) {
+      console.error("Missing booking confirmation details. Params:", { bookingId, facilityName, facilityAddress, startTime, endTime, cost });
       toast({
         title: "Confirmation Error",
         description: "Could not load all booking details. Please check 'My Bookings'.",
@@ -66,7 +67,7 @@ function ConfirmationPageComponent() {
     if (bookingDetails?.facilityAddress) {
         window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(bookingDetails.facilityAddress)}`, '_blank');
     } else {
-        alert("Navigation address not available.");
+        toast({ title: "Navigation Error", description: "Navigation address not available.", variant: "destructive" });
     }
   };
 
@@ -148,6 +149,3 @@ export default function BookingConfirmationPage() {
     </Suspense>
   );
 }
-
-// Helper for toast, can be moved to a util if used elsewhere
-import { toast } from '@/hooks/use-toast';
