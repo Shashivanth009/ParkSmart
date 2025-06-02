@@ -42,14 +42,21 @@ export interface Booking {
 }
 
 export interface UserProfile {
-  name: string; // Made non-optional, default will be provided
-  email: string; // Made non-optional, default will be provided
+  name: string;
+  email: string;
   phone?: string;
   avatarUrl?: string | null;
   preferences?: {
     defaultVehiclePlate?: string;
+    defaultVehicleMake?: string;
+    defaultVehicleModel?: string;
+    defaultVehicleColor?: string;
     requireCovered?: boolean;
     requireEVCharging?: boolean;
+    communication?: {
+      bookingEmails?: boolean;
+      promotionalEmails?: boolean;
+    };
   };
   createdAt?: Timestamp;
   updatedAt?: Timestamp;

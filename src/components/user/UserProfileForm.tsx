@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/hooks/useAuth";
 import { UploadCloud } from "lucide-react";
@@ -22,18 +22,26 @@ const profileSchema = z.object({
     message: "Invalid phone number format.",
   }),
   avatarUrl: z.string().url({ message: "Please enter a valid URL for the avatar." }).optional().or(z.literal("")).or(z.null()),
+  
   defaultVehiclePlate: z.string().optional().refine(val => !val || /^[A-Z0-9\s-]{3,10}$/i.test(val), {
     message: "Invalid vehicle plate format (3-10 alphanumeric chars, spaces, hyphens)."
   }),
+  defaultVehicleMake: z.string().optional(),
+  defaultVehicleModel: z.string().optional(),
+  defaultVehicleColor: z.string().optional(),
+
   requireCovered: z.boolean().optional(),
   requireEVCharging: z.boolean().optional(),
+
+  communicationBookingEmails: z.boolean().optional(),
+  communicationPromotionalEmails: z.boolean().optional(),
 });
 
 export type ProfileFormValues = z.infer<typeof profileSchema>;
 
 interface UserProfileFormProps {
   userProfile: UserProfileType;
-  onSubmit: (data: ProfileFormValues) => Promise<void>;
+  onSubmit: (data: Partial<UserProfileType>) => Promise<void>; // Changed to Partial<UserProfileType> for easier construction
 }
 
 export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: UserProfileFormProps) {
@@ -41,19 +49,22 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
-    defaultValues: { // Initialize defaultValues directly from the prop
+    defaultValues: {
       name: userProfile.name || "",
       email: userProfile.email || "",
       phone: userProfile.phone || "",
-      avatarUrl: userProfile.avatarUrl || "", // Handles null or undefined from schema
+      avatarUrl: userProfile.avatarUrl || "",
       defaultVehiclePlate: userProfile.preferences?.defaultVehiclePlate || "",
+      defaultVehicleMake: userProfile.preferences?.defaultVehicleMake || "",
+      defaultVehicleModel: userProfile.preferences?.defaultVehicleModel || "",
+      defaultVehicleColor: userProfile.preferences?.defaultVehicleColor || "",
       requireCovered: userProfile.preferences?.requireCovered || false,
       requireEVCharging: userProfile.preferences?.requireEVCharging || false,
+      communicationBookingEmails: userProfile.preferences?.communication?.bookingEmails !== undefined ? userProfile.preferences.communication.bookingEmails : true, // Default to true
+      communicationPromotionalEmails: userProfile.preferences?.communication?.promotionalEmails || false, // Default to false
     },
   });
 
-  // This useEffect will now update the form if the userProfile prop itself changes
-  // *after* the initial render. defaultValues handles the initial state.
   useEffect(() => {
     form.reset({
       name: userProfile.name || "",
@@ -61,20 +72,38 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
       phone: userProfile.phone || "",
       avatarUrl: userProfile.avatarUrl || "",
       defaultVehiclePlate: userProfile.preferences?.defaultVehiclePlate || "",
+      defaultVehicleMake: userProfile.preferences?.defaultVehicleMake || "",
+      defaultVehicleModel: userProfile.preferences?.defaultVehicleModel || "",
+      defaultVehicleColor: userProfile.preferences?.defaultVehicleColor || "",
       requireCovered: userProfile.preferences?.requireCovered || false,
       requireEVCharging: userProfile.preferences?.requireEVCharging || false,
+      communicationBookingEmails: userProfile.preferences?.communication?.bookingEmails !== undefined ? userProfile.preferences.communication.bookingEmails : true,
+      communicationPromotionalEmails: userProfile.preferences?.communication?.promotionalEmails || false,
     });
   }, [userProfile, form]);
 
 
   async function processSubmit(values: ProfileFormValues) {
-    const submitData = {
-        ...values,
-        avatarUrl: values.avatarUrl || undefined, // Ensure empty string becomes undefined for Firestore if desired
+    const submitData: Partial<UserProfileType> = {
+        name: values.name,
+        // email is not submitted as it's read-only
+        phone: values.phone || undefined,
+        avatarUrl: values.avatarUrl || undefined,
         preferences: {
+            // Keep existing preferences not in form, and update others
+            ...userProfile.preferences, 
             defaultVehiclePlate: values.defaultVehiclePlate || undefined,
+            defaultVehicleMake: values.defaultVehicleMake || undefined,
+            defaultVehicleModel: values.defaultVehicleModel || undefined,
+            defaultVehicleColor: values.defaultVehicleColor || undefined,
             requireCovered: values.requireCovered,
             requireEVCharging: values.requireEVCharging,
+            communication: {
+                // Keep existing communication preferences not in form, and update others
+                ...(userProfile.preferences?.communication),
+                bookingEmails: values.communicationBookingEmails,
+                promotionalEmails: values.communicationPromotionalEmails,
+            }
         }
     };
     await handleFormSubmit(submitData);
@@ -104,7 +133,6 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
                   </Avatar>
                   <FormControl>
                     <div className="flex items-center gap-2 w-full max-w-sm mx-auto">
-                      {/* Ensure field.value is never undefined for the Input */}
                       <Input type="url" placeholder="Image URL for avatar" {...field} value={field.value ?? ""} className="text-xs"/>
                       <Button type="button" variant="outline" size="icon" className="shrink-0"
                         onClick={() => alert("File upload for avatar coming soon! For now, please use a URL.")}>
@@ -112,7 +140,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
                       </Button>
                     </div>
                   </FormControl>
-                  <FormDescription className="text-xs">Enter a URL for your new avatar image.</FormDescription>
+                  {/* Removed FormDescription for avatarUrl */}
                   <FormMessage />
                 </FormItem>
               )}
@@ -146,7 +174,6 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Phone Number (Optional)</FormLabel>
-                  {/* Ensure field.value is never undefined for the Input */}
                   <FormControl><Input type="tel" placeholder="+1 234 567 8900" {...field} value={field.value ?? ""} /></FormControl>
                   <FormMessage />
                 </FormItem>
@@ -157,8 +184,8 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
 
         <Card>
           <CardHeader>
-            <CardTitle>Parking Preferences</CardTitle>
-            <CardDescription>Set your default parking preferences for faster bookings.</CardDescription>
+            <CardTitle>Vehicle &amp; Parking Preferences</CardTitle>
+            <CardDescription>Set your default vehicle information and parking preferences.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <FormField
@@ -167,13 +194,47 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Default Vehicle Plate (Optional)</FormLabel>
-                  {/* Ensure field.value is never undefined for the Input */}
                   <FormControl><Input placeholder="XYZ 123" {...field} value={field.value ?? ""} /></FormControl>
-                  <FormDescription>Enter your most frequently used vehicle's number plate.</FormDescription>
+                  <FormDescription>Your most frequently used vehicle's number plate.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <FormField
+                control={form.control}
+                name="defaultVehicleMake"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Make (Optional)</FormLabel>
+                    <FormControl><Input placeholder="e.g., Toyota" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="defaultVehicleModel"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Model (Optional)</FormLabel>
+                    <FormControl><Input placeholder="e.g., Camry" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="defaultVehicleColor"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Color (Optional)</FormLabel>
+                    <FormControl><Input placeholder="e.g., Blue" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
             <FormField
               control={form.control}
               name="requireCovered"
@@ -181,7 +242,7 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
                 <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
                   <div className="space-y-0.5">
                     <FormLabel>Prefer Covered Parking?</FormLabel>
-                    <FormDescription>Prioritize covered spots in search results if available.</FormDescription>
+                    <FormDescription>Prioritize covered spots in search results.</FormDescription>
                   </div>
                   <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                 </FormItem>
@@ -194,7 +255,42 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
                 <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
                   <div className="space-y-0.5">
                     <FormLabel>Need EV Charging?</FormLabel>
-                    <FormDescription>Only show spots with EV charging facilities if available.</FormDescription>
+                    <FormDescription>Only show spots with EV charging facilities.</FormDescription>
+                  </div>
+                  <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                </FormItem>
+              )}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Communication Preferences</CardTitle>
+            <CardDescription>Manage how we communicate with you.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <FormField
+              control={form.control}
+              name="communicationBookingEmails"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                  <div className="space-y-0.5">
+                    <FormLabel>Booking Related Emails</FormLabel>
+                    <FormDescription>Receive confirmations, reminders, and updates about your bookings.</FormDescription>
+                  </div>
+                  <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="communicationPromotionalEmails"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                  <div className="space-y-0.5">
+                    <FormLabel>Promotional Emails</FormLabel>
+                    <FormDescription>Receive news, special offers, and updates from ParkSmart.</FormDescription>
                   </div>
                   <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                 </FormItem>

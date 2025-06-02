@@ -11,36 +11,39 @@ import { toast } from '@/hooks/use-toast';
 export default function ProfilePage() {
   const { user, loading: authLoading, updateUserProfileData } = useAuth();
   const [userProfileForForm, setUserProfileForForm] = useState<UserProfileType | null>(null);
-  const [isLoading, setIsLoading] = useState(true); // Page-specific loading state
+  const [isLoading, setIsLoading] = useState(true); 
 
   useEffect(() => {
     if (authLoading) {
-      setIsLoading(true); // Show loader if auth state is still resolving
+      setIsLoading(true); 
       return;
     }
 
-    setIsLoading(true); // Start profile page specific loading/processing
+    setIsLoading(true); 
 
-    if (user && user.profile) { // user and user.profile are now guaranteed by useAuth if authenticated & verified
-      // Populate the form state with data from user.profile (which is UserProfile type)
+    if (user && user.profile) { 
       const profileDataForForm: UserProfileType = {
-        name: user.profile.name, // Directly from profile object
-        email: user.email || user.profile.email, // Auth email primary, fallback to profile email (should be same)
+        name: user.profile.name, 
+        email: user.email || user.profile.email, 
         phone: user.profile.phone || "",
-        avatarUrl: user.profile.avatarUrl || user.photoURL, // Profile avatar primary, fallback to auth photoURL
+        avatarUrl: user.profile.avatarUrl || user.photoURL, 
         preferences: {
           defaultVehiclePlate: user.profile.preferences?.defaultVehiclePlate || "",
+          defaultVehicleMake: user.profile.preferences?.defaultVehicleMake || "",
+          defaultVehicleModel: user.profile.preferences?.defaultVehicleModel || "",
+          defaultVehicleColor: user.profile.preferences?.defaultVehicleColor || "",
           requireCovered: user.profile.preferences?.requireCovered || false,
           requireEVCharging: user.profile.preferences?.requireEVCharging || false,
+          communication: {
+            bookingEmails: user.profile.preferences?.communication?.bookingEmails !== undefined ? user.profile.preferences.communication.bookingEmails : true,
+            promotionalEmails: user.profile.preferences?.communication?.promotionalEmails || false,
+          }
         },
-        createdAt: user.profile.createdAt, // Might be undefined if default-constructed in useAuth
-        updatedAt: user.profile.updatedAt, // Might be undefined if default-constructed in useAuth
+        createdAt: user.profile.createdAt, 
+        updatedAt: user.profile.updatedAt, 
       };
       setUserProfileForForm(profileDataForForm);
 
-      // Heuristic to check if it's a "new" or "incomplete" profile.
-      // If `user.profile.createdAt` is undefined, it implies this profile was default-constructed in useAuth
-      // because the Firestore document didn't exist when onAuthStateChanged first ran.
       if (!user.profile.createdAt && !user.profile.updatedAt) {
         toast({
           title: "Welcome! Complete Your Profile",
@@ -48,35 +51,20 @@ export default function ProfilePage() {
         });
       }
     } else {
-      // Not authenticated, or user object/profile is not as expected after authLoading is false.
-      // DashboardLayout should handle redirection if not authenticated.
-      // Setting userProfileForForm to null will trigger the "Could not load" message if not redirected.
       setUserProfileForForm(null);
     }
-    setIsLoading(false); // End profile page specific loading
+    setIsLoading(false); 
   }, [user, authLoading]);
 
-  const handleProfileUpdate = async (data: Partial<UserProfileType>) => {
+  const handleProfileUpdate = async (data: Partial<UserProfileType>) => { // Changed to Partial<UserProfileType>
     if (!user?.uid || !userProfileForForm) return;
 
-    const firestoreData: Partial<UserProfileType> = {
-        name: data.name,
-        phone: data.phone,
-        avatarUrl: data.avatarUrl,
-        preferences: {
-            defaultVehiclePlate: data.preferences?.defaultVehiclePlate,
-            requireCovered: data.preferences?.requireCovered,
-            requireEVCharging: data.preferences?.requireEVCharging,
-        }
-    };
-
+    // The data from UserProfileForm is already structured as Partial<UserProfileType>
+    // so we can pass it directly.
     try {
-      await updateUserProfileData(user.uid, firestoreData);
-      // user state in useAuth will be updated, triggering re-render of this page
-      // with the new user.profile data via the useEffect.
+      await updateUserProfileData(user.uid, data);
     } catch (error) {
       console.error("Failed to update profile from ProfilePage:", error);
-      // Toast is handled in updateUserProfileData in useAuth
     }
   };
 
@@ -89,8 +77,6 @@ export default function ProfilePage() {
   }
 
   if (!userProfileForForm) {
-    // This message is shown if user is not authenticated/verified (user is null from useAuth),
-    // or if userProfileForForm was explicitly set to null in the useEffect.
     return <p>Could not load user profile. Ensure you are logged in and your email is verified.</p>;
   }
 
