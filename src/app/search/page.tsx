@@ -1,6 +1,6 @@
 
 "use client";
-import { useEffect, useState, Suspense, useCallback } from 'react';
+import { useEffect, useState, Suspense, useCallback, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { ParkingSlotCard } from '@/components/parking/ParkingSlotCard';
 import type { ParkingSpace, ParkingFeature } from '@/types';
@@ -12,11 +12,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { OpenLayersMap } from '@/components/map/OpenLayersMap';
-import { ListFilter, MapPin as MapPinIcon, Loader2, AlertTriangle, Info, ServerCrash, Search } from 'lucide-react';
+import { ListFilter, MapPin as MapPinIcon, Loader2, AlertTriangle, Info, ServerCrash, Search, X } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { findParkingSpots, type FindParkingInput } from '@/ai/flows/find-parking-flow';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 const DEFAULT_FILTERS: ParkingFilters = {
   priceRange: [0, 50] as [number, number],
@@ -24,6 +25,23 @@ const DEFAULT_FILTERS: ParkingFilters = {
   distanceMax: 5, 
   ratingMin: 0,
 };
+
+const MOCK_LOCATION_SUGGESTIONS = [
+  "Hitech City, Hyderabad",
+  "Gachibowli Stadium, Hyderabad",
+  "Charminar Area, Hyderabad",
+  "Hyderabad Airport (RGIA)",
+  "Secunderabad Railway Station",
+  "Banjara Hills, Hyderabad",
+  "Jubilee Hills, Hyderabad",
+  "Kukatpally, Hyderabad",
+  "Necklace Road, Hyderabad",
+  "Tank Bund, Hyderabad",
+  "Restaurant near Charminar",
+  "Shopping mall in Gachibowli",
+  "Hotel near HITEC City",
+  "Park in Jubilee Hills",
+];
 
 
 function SearchPageComponent() {
@@ -46,6 +64,13 @@ function SearchPageComponent() {
   const [mapCenter, setMapCenter] = useState<[number, number]>([78.4867, 17.3850]); 
   const [mapZoom, setMapZoom] = useState<number>(12);
   const [mapMarkerPosition, setMapMarkerPosition] = useState<[number, number] | null>(null);
+
+  // State for suggestions
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRef = useRef<HTMLUListElement>(null);
 
 
   useEffect(() => {
@@ -93,6 +118,7 @@ function SearchPageComponent() {
 
     setIsLoading(true);
     setAiSearchPerformed(true); 
+    setShowSuggestions(false); // Hide suggestions when search starts
     try {
       const searchInput: FindParkingInput = {
         locationName: locationQuery,
@@ -107,17 +133,15 @@ function SearchPageComponent() {
         setMapMarkerPosition(firstResultCoords);
         setMapZoom(14);
       } else {
-         if (!locationQuery.startsWith("Map click:")) { // Clear marker if text search yields no results
+         if (!locationQuery.startsWith("Clicked Location:")) { 
             setMapMarkerPosition(null);
          }
-         // If it was a map click, marker is already set by handleMapClick, keep it.
-         // Keep current mapCenter or set to a default if no results from a map click? For now, keep as is.
       }
     } catch (error: any) {
       console.error("AI search failed:", error);
       toast({title: "AI Search Error", description: error.message || "Could not fetch parking spots.", variant: "destructive"});
       setRawAiSpaces([]);
-      setMapMarkerPosition(null); // Clear marker on error
+      setMapMarkerPosition(null); 
     } finally {
       setIsLoading(false);
     }
@@ -125,7 +149,15 @@ function SearchPageComponent() {
 
 
   useEffect(() => {
-    if (isInitialLoad || !searchAttempted || !searchQuery.trim()) return;
+    if (isInitialLoad || !searchAttempted || !searchQuery.trim()) {
+        if (!searchQuery.trim()) { // If search query is cleared, also clear results
+            setRawAiSpaces([]);
+            setDisplayedSpaces([]);
+            setMapMarkerPosition(null);
+            if (aiSearchPerformed) setAiSearchPerformed(false); // Reset so placeholder shows
+        }
+        return;
+    }
     if (aiSearchUnavailable) return;
 
     const locationToSearch = searchQuery.trim();
@@ -137,7 +169,7 @@ function SearchPageComponent() {
       filtersToUse.features
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userSetFilters, searchAttempted, searchQuery, performAiSearch]); // Removed isInitialLoad and aiSearchUnavailable as they are checked inside
+  }, [userSetFilters, searchAttempted, searchQuery, performAiSearch, isInitialLoad]); // Added isInitialLoad to dependencies
 
 
   useEffect(() => {
@@ -175,12 +207,58 @@ function SearchPageComponent() {
   }, []);
   
   const handleSearchInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(event.target.value);
+    const query = event.target.value;
+    setSearchQuery(query);
+    setActiveSuggestionIndex(-1);
+    if (query.length > 0) {
+      const filteredSuggestions = MOCK_LOCATION_SUGGESTIONS.filter(
+        suggestion => suggestion.toLowerCase().includes(query.toLowerCase())
+      );
+      setSuggestions(filteredSuggestions.slice(0, 5)); // Limit to 5 suggestions
+      setShowSuggestions(true);
+    } else {
+      setShowSuggestions(false);
+    }
+  };
+  
+  const handleSuggestionClick = (suggestion: string) => {
+    setSearchQuery(suggestion);
+    setShowSuggestions(false);
+    setSearchAttempted(true); // This will trigger the useEffect to perform search
+    searchInputRef.current?.focus();
   };
 
-  const handleTextSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!isAuthenticated && !authLoading && !aiSearchUnavailable) {
+  const handleSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSuggestions || suggestions.length === 0) return;
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setActiveSuggestionIndex(prev => (prev + 1) % suggestions.length);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActiveSuggestionIndex(prev => (prev - 1 + suggestions.length) % suggestions.length);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      if (activeSuggestionIndex >= 0 && activeSuggestionIndex < suggestions.length) {
+        handleSuggestionClick(suggestions[activeSuggestionIndex]);
+      } else {
+        // If no suggestion is active, just submit the current query
+        submitSearchForm();
+      }
+    } else if (event.key === 'Escape') {
+      setShowSuggestions(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSuggestionIndex >= 0 && suggestionsRef.current) {
+      const activeElement = suggestionsRef.current.children[activeSuggestionIndex] as HTMLLIElement;
+      activeElement?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [activeSuggestionIndex]);
+
+  const submitSearchForm = () => {
+     if (!isAuthenticated && !authLoading && !aiSearchUnavailable) {
         toast({title: "Login Required", description: "Please log in to search for parking.", variant: "destructive"});
         router.push(`/login?redirect=${encodeURIComponent(`/search?location=${searchQuery}`)}`);
         return;
@@ -190,17 +268,38 @@ function SearchPageComponent() {
        setSearchAttempted(true);
        setRawAiSpaces([]); 
        setDisplayedSpaces([]);
-       setMapMarkerPosition(null); // Clear marker
+       setMapMarkerPosition(null);
+       setShowSuggestions(false);
        return;
     }
     
     setSearchAttempted(true); 
+    setShowSuggestions(false);
 
     const urlParams = new URLSearchParams(window.location.search);
     if(searchQuery.trim()) urlParams.set('location', searchQuery.trim());
     else urlParams.delete('location');
     router.push(`/search?${urlParams.toString()}`, { scroll: false });
-    // performAiSearch will be triggered by useEffect dependency on searchQuery/searchAttempted
+  }
+
+  const handleTextSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    submitSearchForm();
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setShowSuggestions(false);
+    setRawAiSpaces([]);
+    setDisplayedSpaces([]);
+    setMapMarkerPosition(null);
+    setAiSearchPerformed(false);
+    setSearchAttempted(false); // Reset search attempt
+    // Clear URL param
+    const urlParams = new URLSearchParams(window.location.search);
+    urlParams.delete('location');
+    router.push(`/search?${urlParams.toString()}`, { scroll: false });
+    searchInputRef.current?.focus();
   };
 
   const handleMapClick = useCallback((coords: { lon: number, lat: number }) => {
@@ -226,6 +325,7 @@ function SearchPageComponent() {
     router.push(`/search?${urlParams.toString()}`, { scroll: false });
 
     setSearchAttempted(true); 
+    setShowSuggestions(false);
 }, [aiSearchUnavailable, isAuthenticated, authLoading, router]);
 
 
@@ -267,27 +367,65 @@ function SearchPageComponent() {
       <main className="flex-grow container mx-auto px-4 md:px-6 py-8">
         <PageTitle 
             title="AI Parking Slot Finder" 
-            description={searchQuery ? `Showing results for "${searchQuery}"` : "Search by location, click map, or filter preferences."}
+            description={searchQuery ? `Showing results for "${searchQuery.replace(/^Clicked Location: /, '')}"` : "Search by location, click map, or filter preferences."}
         />
         
-        <form onSubmit={handleTextSearchSubmit} className="mb-6 flex items-center gap-2">
+        <form onSubmit={handleTextSearchSubmit} className="mb-1 flex items-center gap-2 relative">
             <div className="relative w-full">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground icon-glow" />
                 <Input
+                    ref={searchInputRef}
                     type="text"
                     placeholder="Enter location, e.g., 'Restaurant near Charminar'"
                     value={searchQuery}
                     onChange={handleSearchInputChange}
-                    className="pl-10 pr-4 py-2.5 h-11 text-base"
+                    onKeyDown={handleSearchKeyDown}
+                    onFocus={() => searchQuery.length > 0 && suggestions.length > 0 && setShowSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 150)} // Delay to allow click on suggestion
+                    className="pl-10 pr-10 py-2.5 h-11 text-base" // Added pr-10 for clear button
                     aria-label="Search parking location"
+                    autoComplete="off"
                 />
+                {searchQuery && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+                    onClick={handleClearSearch}
+                    aria-label="Clear search query"
+                  >
+                    <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                  </Button>
+                )}
+
+                {showSuggestions && suggestions.length > 0 && (
+                <ul 
+                    ref={suggestionsRef}
+                    className="absolute z-10 w-full bg-card border border-border rounded-md shadow-lg mt-1 max-h-60 overflow-y-auto"
+                >
+                    {suggestions.map((suggestion, index) => (
+                    <li
+                        key={suggestion}
+                        className={cn(
+                        "px-3 py-2 cursor-pointer hover:bg-muted text-sm",
+                        index === activeSuggestionIndex && "bg-muted"
+                        )}
+                        onClick={() => handleSuggestionClick(suggestion)}
+                        onMouseDown={(e) => e.preventDefault()} // Prevents onBlur from firing before onClick
+                    >
+                        {suggestion}
+                    </li>
+                    ))}
+                </ul>
+                )}
             </div>
             <Button type="submit" size="lg" className="h-11 shrink-0">
                 <Search className="mr-2 h-5 w-5" /> Search
             </Button>
         </form>
         
-        <div className="mb-8 h-[300px] md:h-[400px] rounded-lg overflow-hidden shadow-xl bg-muted relative">
+        <div className="mb-8 mt-6 h-[300px] md:h-[400px] rounded-lg overflow-hidden shadow-xl bg-muted relative">
             <OpenLayersMap 
               centerCoordinates={mapCenter} 
               zoomLevel={mapZoom}
@@ -357,3 +495,4 @@ export default function SearchPage() {
   );
 }
 
+    
