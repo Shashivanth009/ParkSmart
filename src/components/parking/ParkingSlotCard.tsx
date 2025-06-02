@@ -22,6 +22,7 @@ export function ParkingSlotCard({ space }: ParkingSlotCardProps) {
   const router = useRouter();
 
   const isFallbackSlot = space.id.startsWith('fallback-slot-');
+  const isBookable = !isFallbackSlot && !space.isOccupied;
 
   const cardBgColor = space.isOccupied ? 'bg-red-500/10 hover:bg-red-500/20' : 'bg-green-500/10 hover:bg-green-500/20';
   const borderColor = space.isOccupied ? 'border-red-500/30' : 'border-green-500/30';
@@ -37,10 +38,12 @@ export function ParkingSlotCard({ space }: ParkingSlotCardProps) {
   };
 
   const handleBookNowClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
+    // This function is primarily for the auth check when the button is a Link.
+    // For disabled/fallback buttons, the click might not even occur if truly disabled,
+    // but this provides a fallback.
+    e.stopPropagation(); // Prevent card click if button itself handles it.
+
     if (isFallbackSlot) {
-        // This click handler might not even be reached if button is truly disabled,
-        // but good for clarity. Tooltip is primary feedback.
         toast({
             title: "Demo Slot",
             description: "Fallback slots are for demonstration and cannot be booked.",
@@ -48,6 +51,15 @@ export function ParkingSlotCard({ space }: ParkingSlotCardProps) {
         });
         return;
     }
+    if (space.isOccupied) {
+         toast({
+            title: "Slot Occupied",
+            description: "This slot is currently occupied and cannot be booked.",
+            variant: "default"
+        });
+        return;
+    }
+
     if (!isAuthenticated && !authLoading) {
       toast({
         title: "Login Required",
@@ -57,30 +69,75 @@ export function ParkingSlotCard({ space }: ParkingSlotCardProps) {
       router.push(`/login?redirect=/booking/${space.id}`);
       return;
     }
-    // If authenticated, navigation is handled by the Link component
+    // If authenticated, the Link component will handle navigation.
   };
 
-  const bookNowButton = (
-    <Button
-      variant="default"
-      size="sm"
-      className="w-full mt-2 text-xs h-8"
-      onClick={handleBookNowClick}
-      disabled={isFallbackSlot || space.isOccupied}
-      asChild={!isFallbackSlot && !space.isOccupied} // Only use asChild if not disabled
-    >
-      {isFallbackSlot || space.isOccupied ? (
-        <span className="flex items-center">
-          <CalendarPlus className="mr-1.5 h-3.5 w-3.5" /> Book Now
-        </span>
-      ) : (
-        <Link href={`/booking/${space.id}`}>
-            <CalendarPlus className="mr-1.5 h-3.5 w-3.5" /> Book Now
-        </Link>
-      )}
-    </Button>
+  const bookNowButtonContent = (
+    <>
+      <CalendarPlus className="mr-1.5 h-3.5 w-3.5" /> Book Now
+    </>
   );
 
+  const renderBookButton = () => {
+    if (isFallbackSlot) {
+      return (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="default"
+                size="sm"
+                className="w-full mt-2 text-xs h-8"
+                disabled={true}
+                onClick={handleBookNowClick} // Still useful for toast
+              >
+                {bookNowButtonContent}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Fallback slots are for demo and cannot be booked.</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+
+    if (space.isOccupied) {
+      return (
+        <Button
+          variant="default"
+          size="sm"
+          className="w-full mt-2 text-xs h-8"
+          disabled={true}
+          onClick={handleBookNowClick} // Still useful for toast
+        >
+          {bookNowButtonContent}
+        </Button>
+      );
+    }
+
+    // Available and not fallback: render Link-wrapped Button
+    return (
+      <Button
+        variant="default"
+        size="sm"
+        className="w-full mt-2 text-xs h-8"
+        asChild
+        onClick={(e) => { // Handle auth check before Link navigates
+            if (!isAuthenticated && !authLoading) {
+                e.preventDefault(); // Prevent Link navigation
+                handleBookNowClick(e); // Trigger auth check and redirect
+            }
+            // If authenticated, Link will proceed.
+        }}
+      >
+        <Link href={`/booking/${space.id}`}>
+          {bookNowButtonContent}
+        </Link>
+      </Button>
+    );
+  };
+  
   const cardContent = (
     <CardContent className="p-3 sm:p-4 flex flex-col justify-between h-full">
       <div>
@@ -115,18 +172,7 @@ export function ParkingSlotCard({ space }: ParkingSlotCardProps) {
           <p className={`mt-1 text-sm font-semibold ${textColor}`}>Available</p>
           {space.pricePerHour !== undefined && <p className="text-xs text-muted-foreground">${space.pricePerHour.toFixed(2)}/hr</p>}
           
-          {isFallbackSlot ? (
-            <TooltipProvider delayDuration={300}>
-              <Tooltip>
-                <TooltipTrigger asChild>{bookNowButton}</TooltipTrigger>
-                <TooltipContent>
-                  <p>Fallback slots are for demo and cannot be booked.</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ) : (
-            bookNowButton
-          )}
+          {renderBookButton()}
         </div>
       )}
       
