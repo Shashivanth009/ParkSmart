@@ -12,7 +12,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AppLogo } from '@/components/core/AppLogo';
-import { ChromeIcon } from 'lucide-react'; // Assuming you have this or a similar icon
+import { ChromeIcon, Loader2 } from 'lucide-react'; // Assuming you have this or a similar icon
 import { toast } from '@/hooks/use-toast';
 import { useEffect } from 'react';
 
@@ -24,16 +24,17 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
-  const { loginWithEmail, loginWithGoogle, loading, isAuthenticated } = useAuth();
+  const { loginWithEmail, loginWithGoogle, loading: authLoading, isAuthenticated, user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && user) { // Check user as well to ensure profile might be loaded
       const redirectPath = searchParams.get('redirect') || '/dashboard';
+      console.log("LoginPage: Authenticated, redirecting to", redirectPath);
       router.push(redirectPath);
     }
-  }, [isAuthenticated, router, searchParams]);
+  }, [isAuthenticated, user, router, searchParams]);
 
   useEffect(() => {
     const message = searchParams.get('message');
@@ -43,7 +44,9 @@ export default function LoginPage() {
         description: "Please check your inbox to verify your email address before logging in.",
       });
       // Clean the message from URL
-      router.replace('/login', { scroll: false });
+      const current = new URL(window.location.href);
+      current.searchParams.delete('message');
+      router.replace(current.pathname + current.search, { scroll: false });
     }
   }, [searchParams, router]);
 
@@ -59,27 +62,32 @@ export default function LoginPage() {
   async function onEmailSubmit(values: LoginFormValues) {
     try {
       await loginWithEmail(values.email, values.password);
-      // Redirection is handled by useAuth or useEffect
+      // Redirection is handled by useAuth's loginWithEmail on success
     } catch (error) {
       // Error is already handled by toast in useAuth
       console.error("Login page email submit error:", error);
+      // Optionally, reset form fields or parts of it on specific errors
+      // form.resetField("password"); // Example
     }
   }
 
   async function handleGoogleLogin() {
     try {
       await loginWithGoogle();
-      // Redirection is handled by useAuth or useEffect
+      // Redirection is handled by useAuth's loginWithGoogle on success
     } catch (error: any) {
       // Error is already handled by toast in useAuth
       console.error("Login page Google login error:", error.message);
     }
   }
   
-  if (isAuthenticated) { // To prevent flicker if already authenticated
+  // This handles the case where the component might render briefly even if useEffect will redirect.
+  // Or if JS is disabled, though that's less of a concern for SPAs usually.
+  if (isAuthenticated && user) { 
     return (
-      <div className="flex min-h-screen items-center justify-center p-4">
-        <p>Redirecting...</p>
+      <div className="flex min-h-screen items-center justify-center p-4 bg-gradient-to-br from-background to-primary/10">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="ml-2">Redirecting...</p>
       </div>
     );
   }
@@ -96,8 +104,8 @@ export default function LoginPage() {
           <CardDescription>Sign in to access your ParkSmart account.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <Button variant="outline" className="w-full" onClick={handleGoogleLogin} disabled={loading}>
-            <ChromeIcon className="mr-2 h-5 w-5 icon-glow" />
+          <Button variant="outline" className="w-full" onClick={handleGoogleLogin} disabled={authLoading}>
+             {authLoading && form.formState.isSubmitting && form.getValues().email === '' ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <ChromeIcon className="mr-2 h-5 w-5 icon-glow" />}
             Sign in with Google
           </Button>
           <div className="relative">
@@ -119,7 +127,7 @@ export default function LoginPage() {
                   <FormItem>
                     <FormLabel>Email</FormLabel>
                     <FormControl>
-                      <Input placeholder="you@example.com" {...field} />
+                      <Input placeholder="you@example.com" {...field} disabled={authLoading} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -132,21 +140,21 @@ export default function LoginPage() {
                   <FormItem>
                     <div className="flex items-center justify-between">
                       <FormLabel>Password</FormLabel>
-                      <Link href="/forgot-password" passHref>
-                        <Button variant="link" size="sm" className="p-0 h-auto text-xs">
+                      <Link href="/forgot-password" passHref legacyBehavior>
+                        <a className={`text-xs text-primary hover:underline ${authLoading ? 'pointer-events-none opacity-50' : ''}`} tabIndex={authLoading ? -1 : 0}>
                           Forgot password?
-                        </Button>
+                        </a>
                       </Link>
                     </div>
                     <FormControl>
-                      <Input type="password" placeholder="••••••••" {...field} />
+                      <Input type="password" placeholder="••••••••" {...field} disabled={authLoading} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "Signing in..." : "Sign In"}
+              <Button type="submit" className="w-full" disabled={authLoading}>
+                {authLoading && form.formState.isSubmitting && form.getValues().email !== '' ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : "Sign In"}
               </Button>
             </form>
           </Form>
@@ -154,8 +162,10 @@ export default function LoginPage() {
         <CardFooter className="text-center text-sm">
           <p className="w-full">
             Don&apos;t have an account?{' '}
-            <Link href="/signup" className="font-medium text-primary hover:underline">
-              Sign Up
+            <Link href="/signup" legacyBehavior>
+                 <a className={`font-medium text-primary hover:underline ${authLoading ? 'pointer-events-none opacity-50' : ''}`}>
+                    Sign Up
+                </a>
             </Link>
           </p>
         </CardFooter>
@@ -163,3 +173,4 @@ export default function LoginPage() {
     </div>
   );
 }
+
