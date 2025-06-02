@@ -1,3 +1,4 @@
+
 "use client";
 import { useAuth } from '@/hooks/useAuth';
 import { PageTitle } from '@/components/core/PageTitle';
@@ -36,9 +37,16 @@ export default function DashboardPage() {
     return <p>Loading user data...</p>; // Or a loader component
   }
 
+  const greeterName =
+    user.profile?.name ||
+    user.displayName ||
+    (user.email ? user.email.split('@')[0] : "") || 
+    "User";
+  const firstName = greeterName.split(" ")[0];
+
   return (
     <div className="space-y-8">
-      <PageTitle title={`Welcome back, ${user.name.split(' ')[0]}!`} description="Here's a quick overview of your parking activity." />
+      <PageTitle title={`Welcome back, ${firstName}!`} description="Here's a quick overview of your parking activity." />
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Card className="shadow-lg hover:shadow-xl transition-shadow">
