@@ -22,7 +22,7 @@ import type { UserProfile } from '@/types';
 import { toast } from '@/hooks/use-toast';
 
 export interface AuthUser extends FirebaseUser {
-  profile: UserProfile;
+  profile: UserProfile; // Made non-optional
 }
 
 interface AuthContextType {
@@ -80,7 +80,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const userDocRef = doc(db, 'users', userId);
-
     const firestorePayload: { [key: string]: any } = {
       updatedAt: serverTimestamp(),
     };
@@ -93,13 +92,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       firestorePayload.phone = (dataToUpdate.phone === undefined || dataToUpdate.phone === "") ? null : dataToUpdate.phone;
     }
     if (dataToUpdate.hasOwnProperty('avatarUrl')) {
-      firestorePayload.avatarUrl = (dataToUpdate.avatarUrl === undefined || dataToUpdate.avatarUrl === "") ? null : dataToUpdate.avatarUrl;
+        // Store Data URL or regular URL in Firestore. Null if cleared.
+      firestorePayload.avatarUrl = (dataToUpdate.avatarUrl === undefined || dataToUpdate.avatarUrl === "" || dataToUpdate.avatarUrl === null) ? null : dataToUpdate.avatarUrl;
     }
     
     // Handle nested preferences
     if (dataToUpdate.preferences) {
       const currentPrefs = user?.profile.preferences || {};
-      const newPrefsPayload: UserProfile['preferences'] = { // Initialize with type, ensure all sub-objects are initialized
+      const newPrefsPayload: UserProfile['preferences'] = {
         defaultVehiclePlate: currentPrefs.defaultVehiclePlate,
         defaultVehicleMake: currentPrefs.defaultVehicleMake,
         defaultVehicleModel: currentPrefs.defaultVehicleModel,
@@ -133,7 +133,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
 
       if (dataToUpdate.preferences.communication) {
-        if (!newPrefsPayload.communication) newPrefsPayload.communication = {}; // Initialize if undefined
+        if (!newPrefsPayload.communication) newPrefsPayload.communication = {};
         if (dataToUpdate.preferences.communication.hasOwnProperty('bookingEmails')) {
           newPrefsPayload.communication.bookingEmails = dataToUpdate.preferences.communication.bookingEmails;
         }
@@ -144,28 +144,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       firestorePayload.preferences = newPrefsPayload;
     }
     
-    // Auth profile updates (displayName, photoURL for FirebaseUser)
     const authProfileUpdates: { displayName?: string; photoURL?: string | null } = {};
     if (dataToUpdate.name && dataToUpdate.name !== auth.currentUser.displayName) {
         authProfileUpdates.displayName = dataToUpdate.name;
     }
     
     if (dataToUpdate.hasOwnProperty('avatarUrl')) {
-        const newAvatarUrl = dataToUpdate.avatarUrl; // This could be a Data URL or a regular URL
-        if (newAvatarUrl === "" || newAvatarUrl === null) {
-            // User is clearing the avatar
+        const newAvatarUrl = dataToUpdate.avatarUrl;
+        if (newAvatarUrl === "" || newAvatarUrl === null) { // User cleared avatar
             if (auth.currentUser.photoURL !== null) {
                 authProfileUpdates.photoURL = null;
             }
-        } else if (newAvatarUrl && newAvatarUrl !== auth.currentUser.photoURL) {
-            // Only update Firebase Auth photoURL if it's NOT a Data URL
-            // Data URLs are stored in Firestore's avatarUrl, not Firebase Auth's photoURL
-            if (!newAvatarUrl.startsWith('data:')) {
-                authProfileUpdates.photoURL = newAvatarUrl;
-            }
-            // If it IS a Data URL, we intentionally do NOT update authProfileUpdates.photoURL here.
-            // The Data URL is correctly saved in Firestore's avatarUrl field via firestorePayload.avatarUrl.
+        } else if (newAvatarUrl && !newAvatarUrl.startsWith('data:') && newAvatarUrl !== auth.currentUser.photoURL) {
+            // Only update Firebase Auth photoURL if it's NOT a Data URL and it's different
+            authProfileUpdates.photoURL = newAvatarUrl;
         }
+        // If newAvatarUrl is a Data URL, we do NOT update authProfileUpdates.photoURL to avoid length errors.
+        // The Data URL is saved in Firestore's avatarUrl.
     }
     
     console.log("Attempting to update Firestore with payload:", JSON.stringify(firestorePayload, null, 2));
@@ -178,19 +173,39 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           await updateFirebaseProfile(auth.currentUser, authProfileUpdates);
       }
 
+      // Optimistically update local user state, then re-fetch for consistency
       if (user && user.uid === userId && auth.currentUser) {
-          // Optimistic update and re-fetch
-          setTimeout(async () => {
-            if (auth.currentUser) { // Check again, as user might have logged out
-                const freshProfile = await fetchUserProfileData(auth.currentUser);
-                if (freshProfile) {
-                    setUser(currUser => currUser ? ({
-                        ...auth.currentUser!, // Use the latest from auth.currentUser
-                        profile: freshProfile
-                    }) : null);
-                }
-            }
-          }, 500);
+        const updatedAuthUser = { ...auth.currentUser } as FirebaseUser; // Get fresh auth.currentUser
+        
+        // Merge changes into local profile state for immediate UI update
+        const newLocalProfile: UserProfile = {
+            ...user.profile, // Start with existing local profile
+            ...(firestorePayload as Partial<UserProfile>), // Overlay Firestore changes
+            name: firestorePayload.name || user.profile.name, // Ensure name is updated
+            avatarUrl: firestorePayload.hasOwnProperty('avatarUrl') ? firestorePayload.avatarUrl : user.profile.avatarUrl, // Handle null for avatarUrl
+            updatedAt: firestorePayload.updatedAt, // This will be a server timestamp placeholder locally
+        };
+         if (firestorePayload.preferences) {
+            newLocalProfile.preferences = firestorePayload.preferences;
+        }
+
+        setUser({
+            ...updatedAuthUser,
+            profile: newLocalProfile,
+        });
+        
+        // Re-fetch after a short delay to get server-generated timestamps and ensure consistency
+        setTimeout(async () => {
+          if (auth.currentUser) { 
+              const freshProfile = await fetchUserProfileData(auth.currentUser);
+              if (freshProfile) {
+                  setUser(currUser => currUser ? ({
+                      ...auth.currentUser!, 
+                      profile: freshProfile
+                  }) : null);
+              }
+          }
+        }, 500); 
       }
       toast({ title: "Profile Updated", description: "Your changes have been saved." });
     } catch (error: any) {
@@ -202,9 +217,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             description = error.message;
         }
         toast({ title: "Update Failed", description, variant: "destructive" });
-        // Do not re-throw to prevent Next.js error overlay for handled errors
     }
-  }, [user, fetchUserProfileData]); // Added user to dependency array
+  }, [user, fetchUserProfileData]);
 
 
   useEffect(() => {
@@ -252,7 +266,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             effectiveProfile = {
                 name: firestoreProfile.name || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
                 email: firestoreProfile.email || firebaseUser.email || '', 
-                avatarUrl: firestoreProfile.avatarUrl || firebaseUser.photoURL, // Prioritize Firestore, fallback to Auth
+                avatarUrl: firestoreProfile.avatarUrl || firebaseUser.photoURL,
                 phone: firestoreProfile.phone || "",
                 preferences: { 
                     defaultVehiclePlate: firestoreProfile.preferences?.defaultVehiclePlate || "",
@@ -270,11 +284,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 updatedAt: firestoreProfile.updatedAt,
             };
           } else {
-            // Construct default profile if none exists in Firestore
             effectiveProfile = {
               name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
               email: firebaseUser.email || '', 
-              avatarUrl: firebaseUser.photoURL, // Use photoURL from auth if no profile
+              avatarUrl: firebaseUser.photoURL,
               phone: "",
               preferences: {
                 defaultVehiclePlate: '',
@@ -288,7 +301,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     promotionalEmails: false,
                 }
               },
-              // createdAt and updatedAt will be undefined, set on first save or Google sign-in if profile is created
             };
              console.log("No Firestore profile found, created default in-memory profile:", effectiveProfile);
           }
@@ -335,39 +347,40 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       toast({ title: "Login Successful", description: `Welcome back!` });
       router.push(redirectParam || '/dashboard');
     } catch (error: any) {
-      console.error("Email login error:", error);
       let description = "An unexpected error occurred during login.";
-      switch (error.code) {
-        case 'auth/invalid-credential':
-          description = "Invalid email or password. Please try again.";
-          break;
-        case 'auth/user-not-found':
-          description = "No account found with this email. Please sign up or check the email address.";
-          break;
-        case 'auth/wrong-password':
-          description = "Incorrect password. Please try again or reset your password.";
-          break;
-        case 'auth/user-disabled':
-          description = "This account has been disabled. Please contact support.";
-          break;
-        case 'auth/too-many-requests':
-          description = "Access to this account has been temporarily disabled due to many failed login attempts. You can immediately restore it by resetting your password or you can try again later.";
-          break;
-        case 'auth/configuration-not-found':
-          description = "Firebase configuration error. Please check `src/lib/firebase.ts` and your Firebase project settings in the Firebase console (ensure Email/Password sign-in is enabled).";
-          break;
-        case 'auth/unauthorized-domain':
-          description = "This domain is not authorized for Firebase operations. Please add it to the authorized domains list in your Firebase project console: Authentication -> Settings -> Authorized domains.";
-          break;
-        case 'auth/network-request-failed':
-            description = "Network error. Please check your internet connection and try again.";
+      if (error.code === 'auth/unauthorized-domain') {
+        console.warn("Login attempt failed due to unauthorized domain. User has been notified via toast.", error.message);
+        description = "This domain is not authorized for Firebase operations. Please add it to the authorized domains list in your Firebase project console: Authentication -> Settings -> Authorized domains.";
+      } else {
+        console.error("Email login error:", error.code, error.message);
+        switch (error.code) {
+          case 'auth/invalid-credential':
+            description = "Invalid email or password. Please try again.";
             break;
-        default:
-          description = error.message || "Login failed. Please try again.";
+          case 'auth/user-not-found':
+            description = "No account found with this email. Please sign up or check the email address.";
+            break;
+          case 'auth/wrong-password':
+            description = "Incorrect password. Please try again or reset your password.";
+            break;
+          case 'auth/user-disabled':
+            description = "This account has been disabled. Please contact support.";
+            break;
+          case 'auth/too-many-requests':
+            description = "Access to this account has been temporarily disabled due to many failed login attempts. You can immediately restore it by resetting your password or you can try again later.";
+            break;
+          case 'auth/configuration-not-found':
+            description = "Firebase configuration error. Please check `src/lib/firebase.ts` and your Firebase project settings in the Firebase console (ensure Email/Password sign-in is enabled).";
+            break;
+          case 'auth/network-request-failed':
+              description = "Network error. Please check your internet connection and try again.";
+              break;
+          default:
+            description = error.message || "Login failed. Please try again.";
+        }
       }
       toast({ title: "Login Failed", description, variant: "destructive" });
       setUser(null);
-      // Do not re-throw
     } finally {
       setLoading(false);
     }
@@ -394,7 +407,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
           email: firebaseUser.email || '',
           avatarUrl: firebaseUser.photoURL,
-          phone: firebaseUser.phoneNumber || "", // Usually not available from Google
+          phone: firebaseUser.phoneNumber || "", 
           createdAt: now,
           updatedAt: now,
           preferences: { 
@@ -413,14 +426,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             updatesForFirestore.name = firebaseUser.displayName;
             needsFirestoreUpdate = true;
         }
-        // Only update Firestore avatarUrl if Google's photoURL is different and not null.
-        // If Google's photoURL is null, we keep the existing Firestore avatarUrl.
         if (firebaseUser.photoURL && firebaseUser.photoURL !== existingProfile.avatarUrl) {
             updatesForFirestore.avatarUrl = firebaseUser.photoURL;
             needsFirestoreUpdate = true;
         }
         if (firebaseUser.email && firebaseUser.email !== existingProfile.email) {
-            updatesForFirestore.email = firebaseUser.email; // Email usually doesn't change but good to check
+            updatesForFirestore.email = firebaseUser.email;
             needsFirestoreUpdate = true;
         }
         if (needsFirestoreUpdate) {
@@ -437,39 +448,40 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       router.push(redirectParam || '/dashboard');
 
     } catch (error: any) {
-      console.error("Google login error:", error.code, error.message);
       let description = "Could not sign in with Google.";
-      switch (error.code) {
-        case 'auth/popup-closed-by-user':
-          description = "Google Sign-In popup was closed before completion. Please try again.";
-          break;
-        case 'auth/account-exists-with-different-credential':
-          description = "An account already exists with this email address using a different sign-in method (e.g., Email/Password). Try logging in with that method.";
-          break;
-        case 'auth/cancelled-popup-request':
-          description = "Multiple popups were opened for Google Sign-In. Please close other popups and try again.";
-          break;
-        case 'auth/popup-blocked':
-          description = "Google Sign-In popup was blocked by the browser. Please allow popups for this site and try again.";
-          break;
-        case 'auth/operation-not-allowed': // This can also mean Google Sign-in is not enabled
-           description = "Google Sign-In is not configured correctly for this app. Please ensure it's enabled in your Firebase project console (Authentication -> Sign-in method) and that your project's OAuth settings are correctly set up in Google Cloud Console.";
-           break;
-        case 'auth/configuration-not-found':
-          description = "Google Sign-In is not configured correctly for this app. Please ensure it's enabled in your Firebase project console (Authentication -> Sign-in method) and that your project's OAuth settings are correctly set up in Google Cloud Console.";
-          break;
-        case 'auth/unauthorized-domain':
-          description = "This domain is not authorized for Firebase operations. Please add it to the authorized domains list in your Firebase project console: Authentication -> Settings -> Authorized domains.";
-          break;
-        case 'auth/network-request-failed':
-            description = "Network error during Google Sign-In. Please check your internet connection and try again.";
+      if (error.code === 'auth/unauthorized-domain') {
+        console.warn("Google login attempt failed due to unauthorized domain. User has been notified via toast.", error.message);
+        description = "This domain is not authorized for Firebase operations. Please add it to the authorized domains list in your Firebase project console: Authentication -> Settings -> Authorized domains.";
+      } else {
+        console.error("Google login error:", error.code, error.message);
+        switch (error.code) {
+          case 'auth/popup-closed-by-user':
+            description = "Google Sign-In popup was closed before completion. Please try again.";
             break;
-        default:
-          description = error.message || "An unexpected error occurred during Google Sign-In.";
+          case 'auth/account-exists-with-different-credential':
+            description = "An account already exists with this email address using a different sign-in method (e.g., Email/Password). Try logging in with that method.";
+            break;
+          case 'auth/cancelled-popup-request':
+            description = "Multiple popups were opened for Google Sign-In. Please close other popups and try again.";
+            break;
+          case 'auth/popup-blocked':
+            description = "Google Sign-In popup was blocked by the browser. Please allow popups for this site and try again.";
+            break;
+          case 'auth/operation-not-allowed':
+             description = "Google Sign-In is not configured correctly for this app. Please ensure it's enabled in your Firebase project console (Authentication -> Sign-in method) and that your project's OAuth settings are correctly set up in Google Cloud Console.";
+             break;
+          case 'auth/configuration-not-found':
+            description = "Google Sign-In is not configured correctly for this app. Please ensure it's enabled in your Firebase project console (Authentication -> Sign-in method) and that your project's OAuth settings are correctly set up in Google Cloud Console.";
+            break;
+          case 'auth/network-request-failed':
+              description = "Network error during Google Sign-In. Please check your internet connection and try again.";
+              break;
+          default:
+            description = error.message || "An unexpected error occurred during Google Sign-In.";
+        }
       }
       toast({ title: "Google Login Failed", description, variant: "destructive" });
       setUser(null);
-      // Do not re-throw
     } finally {
       setLoading(false);
     }
@@ -526,38 +538,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       router.push('/login?message=verification-sent');
     } catch (error: any) {
       let description = "Could not create account.";
-      switch(error.code) {
-        case 'auth/email-already-in-use':
-          description = "This email address is already in use. Please try logging in or use a different email.";
-          break;
-        case 'auth/invalid-email':
-          description = "The email address is not valid. Please enter a correct email.";
-          break;
-        case 'auth/operation-not-allowed':
-          description = "Email/Password sign-in is not enabled in your Firebase project. Please enable it in Firebase Console: Authentication -> Sign-in method.";
-          break;
-        case 'auth/weak-password':
-          description = "The password is too weak. Please choose a stronger password.";
-          break;
-        case 'auth/configuration-not-found':
-          description = "Firebase configuration error. Please ensure `src/lib/firebase.ts` has the correct Firebase project config values and that Email/Password sign-in is enabled in your Firebase console.";
-          break;
-        case 'auth/unauthorized-domain':
-          description = "This domain is not authorized for Firebase operations. Please add it to the authorized domains list in your Firebase project console: Authentication -> Settings -> Authorized domains.";
-          break;
-        case 'auth/network-request-failed':
-            description = "Network error. Please check your internet connection and try again.";
-            break;
-        default:
-          description = error.message || "An unexpected error occurred during signup. Please try again.";
-      }
-      if (error.code) {
+       if (error.code === 'auth/unauthorized-domain') {
+        console.warn("Signup attempt failed due to unauthorized domain. User has been notified via toast.", error.message);
+        description = "This domain is not authorized for Firebase operations. Please add it to the authorized domains list in your Firebase project console: Authentication -> Settings -> Authorized domains.";
+      } else {
         console.error("Firebase Error Code:", error.code);
         console.error("Firebase Error Message:", error.message);
+        switch(error.code) {
+          case 'auth/email-already-in-use':
+            description = "This email address is already in use. Please try logging in or use a different email.";
+            break;
+          case 'auth/invalid-email':
+            description = "The email address is not valid. Please enter a correct email.";
+            break;
+          case 'auth/operation-not-allowed':
+            description = "Email/Password sign-in is not enabled in your Firebase project. Please enable it in Firebase Console: Authentication -> Sign-in method.";
+            break;
+          case 'auth/weak-password':
+            description = "The password is too weak. Please choose a stronger password.";
+            break;
+          case 'auth/configuration-not-found':
+            description = "Firebase configuration error. Please ensure `src/lib/firebase.ts` has the correct Firebase project config values and that Email/Password sign-in is enabled in your Firebase console.";
+            break;
+          case 'auth/network-request-failed':
+              description = "Network error. Please check your internet connection and try again.";
+              break;
+          default:
+            description = error.message || "An unexpected error occurred during signup. Please try again.";
+        }
       }
       toast({ title: "Signup Failed", description, variant: "destructive" });
       setUser(null);
-      // Do not re-throw
     } finally {
       setLoading(false);
     }
@@ -576,7 +587,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
     } catch (error: any) {
       toast({ title: "Logout Failed", description: error.message || "An unexpected error occurred.", variant: "destructive" });
-      // Do not re-throw
     } finally {
       setLoading(false);
     }
@@ -599,12 +609,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else if (error.code === 'auth/configuration-not-found') {
         description = "Firebase configuration error for password reset. Check `src/lib/firebase.ts` and Firebase console settings.";
       } else if (error.code === 'auth/unauthorized-domain') {
+        console.warn("Password reset email attempt failed due to unauthorized domain. User has been notified via toast.", error.message);
         description = "This domain is not authorized for Firebase operations. Please add it to the authorized domains list in your Firebase project console: Authentication -> Settings -> Authorized domains.";
       } else if (error.message) {
+        console.error("Password reset error:", error.code, error.message);
         description = error.message;
       }
       toast({ title: "Error Sending Reset Email", description, variant: "destructive" });
-      // Do not re-throw
     } finally {
       setLoading(false);
     }
@@ -627,12 +638,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else if (error.code === 'auth/configuration-not-found') {
         description = "Firebase configuration error for password reset. Check `src/lib/firebase.ts` and Firebase console settings.";
       } else if (error.code === 'auth/unauthorized-domain') {
+         console.warn("Password confirmation attempt failed due to unauthorized domain. User has been notified via toast.", error.message);
         description = "This domain is not authorized for Firebase operations. Please add it to the authorized domains list in your Firebase project console: Authentication -> Settings -> Authorized domains.";
       } else if (error.message) {
+        console.error("Confirm password reset error:", error.code, error.message);
         description = error.message;
       }
       toast({ title: "Password Reset Failed", description, variant: "destructive" });
-      // Do not re-throw
     } finally {
       setLoading(false);
     }
@@ -666,3 +678,4 @@ export const useAuth = () => {
   }
   return context;
 };
+
