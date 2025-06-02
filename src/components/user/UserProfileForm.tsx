@@ -41,7 +41,7 @@ export type ProfileFormValues = z.infer<typeof profileSchema>;
 
 interface UserProfileFormProps {
   userProfile: UserProfileType;
-  onSubmit: (data: Partial<UserProfileType>) => Promise<void>; // Changed to Partial<UserProfileType> for easier construction
+  onSubmit: (data: Partial<UserProfileType>) => Promise<void>;
 }
 
 export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: UserProfileFormProps) {
@@ -60,8 +60,8 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
       defaultVehicleColor: userProfile.preferences?.defaultVehicleColor || "",
       requireCovered: userProfile.preferences?.requireCovered || false,
       requireEVCharging: userProfile.preferences?.requireEVCharging || false,
-      communicationBookingEmails: userProfile.preferences?.communication?.bookingEmails !== undefined ? userProfile.preferences.communication.bookingEmails : true, // Default to true
-      communicationPromotionalEmails: userProfile.preferences?.communication?.promotionalEmails || false, // Default to false
+      communicationBookingEmails: userProfile.preferences?.communication?.bookingEmails !== undefined ? userProfile.preferences.communication.bookingEmails : true,
+      communicationPromotionalEmails: userProfile.preferences?.communication?.promotionalEmails || false,
     },
   });
 
@@ -86,11 +86,9 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
   async function processSubmit(values: ProfileFormValues) {
     const submitData: Partial<UserProfileType> = {
         name: values.name,
-        // email is not submitted as it's read-only
         phone: values.phone || undefined,
         avatarUrl: values.avatarUrl || undefined,
         preferences: {
-            // Keep existing preferences not in form, and update others
             ...userProfile.preferences, 
             defaultVehiclePlate: values.defaultVehiclePlate || undefined,
             defaultVehicleMake: values.defaultVehicleMake || undefined,
@@ -99,7 +97,6 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
             requireCovered: values.requireCovered,
             requireEVCharging: values.requireEVCharging,
             communication: {
-                // Keep existing communication preferences not in form, and update others
                 ...(userProfile.preferences?.communication),
                 bookingEmails: values.communicationBookingEmails,
                 promotionalEmails: values.communicationPromotionalEmails,
@@ -128,19 +125,19 @@ export function UserProfileForm({ userProfile, onSubmit: handleFormSubmit }: Use
               render={({ field }) => (
                 <FormItem className="flex flex-col items-center text-center">
                   <Avatar className="w-24 h-24 mb-2 ring-2 ring-primary ring-offset-2 ring-offset-background">
-                    <AvatarImage src={currentAvatar || undefined} alt={currentName} data-ai-hint="person portrait" />
+                    <AvatarImage src={currentAvatar || undefined} alt={currentName || "User Avatar"} data-ai-hint="person portrait" />
                     <AvatarFallback>{currentName?.charAt(0).toUpperCase() || 'U'}</AvatarFallback>
                   </Avatar>
                   <FormControl>
                     <div className="flex items-center gap-2 w-full max-w-sm mx-auto">
-                      <Input type="url" placeholder="Image URL for avatar" {...field} value={field.value ?? ""} className="text-xs"/>
+                      <Input type="url" placeholder="Paste image URL for avatar" {...field} value={field.value ?? ""} className="text-xs"/>
                       <Button type="button" variant="outline" size="icon" className="shrink-0"
                         onClick={() => alert("File upload for avatar coming soon! For now, please use a URL.")}>
                         <UploadCloud className="h-4 w-4"/>
                       </Button>
                     </div>
                   </FormControl>
-                  {/* Removed FormDescription for avatarUrl */}
+                  <FormDescription className="text-xs">Please enter a valid URL for your avatar.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
