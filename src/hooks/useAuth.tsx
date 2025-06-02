@@ -74,30 +74,43 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       toast({ title: "Error", description: "Cannot update profile. Auth/DB service unavailable.", variant: "destructive" });
       return;
     }
+    if (auth.currentUser.uid !== userId) {
+      toast({ title: "Error", description: "Unauthorized profile update attempt.", variant: "destructive" });
+      return;
+    }
 
     const userDocRef = doc(db, 'users', userId);
 
-    // Prepare the payload for Firestore, explicitly handling undefined values for optional strings
     const firestorePayload: { [key: string]: any } = {
       updatedAt: serverTimestamp(),
     };
 
     // Handle top-level fields
-    if (dataToUpdate.name !== undefined) {
+    if (dataToUpdate.hasOwnProperty('name')) {
       firestorePayload.name = dataToUpdate.name;
     }
-    // For optional string fields: if key exists in dataToUpdate, and value is undefined or "", store as null. Otherwise, store value.
     if (dataToUpdate.hasOwnProperty('phone')) {
       firestorePayload.phone = (dataToUpdate.phone === undefined || dataToUpdate.phone === "") ? null : dataToUpdate.phone;
     }
     if (dataToUpdate.hasOwnProperty('avatarUrl')) {
       firestorePayload.avatarUrl = (dataToUpdate.avatarUrl === undefined || dataToUpdate.avatarUrl === "") ? null : dataToUpdate.avatarUrl;
     }
-
+    
     // Handle nested preferences
     if (dataToUpdate.preferences) {
-      const currentPrefs = user?.profile.preferences || {}; // Base from existing profile
-      const newPrefsPayload: { [key: string]: any } = { ...currentPrefs }; // Start with existing values
+      const currentPrefs = user?.profile.preferences || {};
+      const newPrefsPayload: UserProfile['preferences'] = { // Initialize with type, ensure all sub-objects are initialized
+        defaultVehiclePlate: currentPrefs.defaultVehiclePlate,
+        defaultVehicleMake: currentPrefs.defaultVehicleMake,
+        defaultVehicleModel: currentPrefs.defaultVehicleModel,
+        defaultVehicleColor: currentPrefs.defaultVehicleColor,
+        requireCovered: currentPrefs.requireCovered,
+        requireEVCharging: currentPrefs.requireEVCharging,
+        communication: {
+          bookingEmails: currentPrefs.communication?.bookingEmails,
+          promotionalEmails: currentPrefs.communication?.promotionalEmails,
+        }
+      };
 
       if (dataToUpdate.preferences.hasOwnProperty('defaultVehiclePlate')) {
         newPrefsPayload.defaultVehiclePlate = (dataToUpdate.preferences.defaultVehiclePlate === undefined || dataToUpdate.preferences.defaultVehiclePlate === "") ? null : dataToUpdate.preferences.defaultVehiclePlate;
@@ -112,20 +125,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         newPrefsPayload.defaultVehicleColor = (dataToUpdate.preferences.defaultVehicleColor === undefined || dataToUpdate.preferences.defaultVehicleColor === "") ? null : dataToUpdate.preferences.defaultVehicleColor;
       }
       
-      // Booleans are directly assigned if present
-      if (dataToUpdate.preferences.requireCovered !== undefined) {
+      if (dataToUpdate.preferences.hasOwnProperty('requireCovered')) {
         newPrefsPayload.requireCovered = dataToUpdate.preferences.requireCovered;
       }
-      if (dataToUpdate.preferences.requireEVCharging !== undefined) {
+      if (dataToUpdate.preferences.hasOwnProperty('requireEVCharging')) {
         newPrefsPayload.requireEVCharging = dataToUpdate.preferences.requireEVCharging;
       }
 
       if (dataToUpdate.preferences.communication) {
-        newPrefsPayload.communication = { ...(currentPrefs.communication || {}) }; // Start with existing comms prefs
-        if (dataToUpdate.preferences.communication.bookingEmails !== undefined) {
+        if (!newPrefsPayload.communication) newPrefsPayload.communication = {}; // Initialize if undefined
+        if (dataToUpdate.preferences.communication.hasOwnProperty('bookingEmails')) {
           newPrefsPayload.communication.bookingEmails = dataToUpdate.preferences.communication.bookingEmails;
         }
-        if (dataToUpdate.preferences.communication.promotionalEmails !== undefined) {
+        if (dataToUpdate.preferences.communication.hasOwnProperty('promotionalEmails')) {
           newPrefsPayload.communication.promotionalEmails = dataToUpdate.preferences.communication.promotionalEmails;
         }
       }
@@ -138,63 +150,42 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         authProfileUpdates.displayName = dataToUpdate.name;
     }
     
-    // If avatarUrl is explicitly set to empty string or null in the form, try to set photoURL to null
-    // Otherwise, if it's a new valid URL, update it.
     if (dataToUpdate.hasOwnProperty('avatarUrl')) {
-        if ((dataToUpdate.avatarUrl === "" || dataToUpdate.avatarUrl === null) && auth.currentUser.photoURL !== null) {
-            authProfileUpdates.photoURL = null;
-        } else if (dataToUpdate.avatarUrl && dataToUpdate.avatarUrl !== auth.currentUser.photoURL) {
-            authProfileUpdates.photoURL = dataToUpdate.avatarUrl;
+        const newAvatarUrl = dataToUpdate.avatarUrl; // This could be a Data URL or a regular URL
+        if (newAvatarUrl === "" || newAvatarUrl === null) {
+            // User is clearing the avatar
+            if (auth.currentUser.photoURL !== null) {
+                authProfileUpdates.photoURL = null;
+            }
+        } else if (newAvatarUrl && newAvatarUrl !== auth.currentUser.photoURL) {
+            // Only update Firebase Auth photoURL if it's NOT a Data URL
+            // Data URLs are stored in Firestore's avatarUrl, not Firebase Auth's photoURL
+            if (!newAvatarUrl.startsWith('data:')) {
+                authProfileUpdates.photoURL = newAvatarUrl;
+            }
+            // If it IS a Data URL, we intentionally do NOT update authProfileUpdates.photoURL here.
+            // The Data URL is correctly saved in Firestore's avatarUrl field via firestorePayload.avatarUrl.
         }
     }
+    
+    console.log("Attempting to update Firestore with payload:", JSON.stringify(firestorePayload, null, 2));
+    console.log("Attempting to update Firebase Auth profile with:", JSON.stringify(authProfileUpdates, null, 2));
 
     try {
-      console.log("Attempting to update Firestore with payload:", JSON.stringify(firestorePayload, null, 2));
       await updateDoc(userDocRef, firestorePayload);
       
       if (Object.keys(authProfileUpdates).length > 0 && auth.currentUser) {
           await updateFirebaseProfile(auth.currentUser, authProfileUpdates);
       }
 
-      // Optimistically update local user state, then re-fetch for consistency
       if (user && user.uid === userId && auth.currentUser) {
-          const updatedFirebaseUser = { // Create a snapshot of current FirebaseUser fields
-              ...auth.currentUser,
-              displayName: authProfileUpdates.displayName !== undefined ? authProfileUpdates.displayName : auth.currentUser.displayName,
-              photoURL: authProfileUpdates.photoURL !== undefined ? authProfileUpdates.photoURL : auth.currentUser.photoURL,
-          };
-          
-          // Create a merged profile for optimistic update
-          const optimisticallyUpdatedProfile: UserProfile = {
-            ...user.profile, // Start with current local profile
-            ...(firestorePayload as Partial<UserProfile>), // Overlay with what was sent to Firestore
-            // Ensure nested preferences are also merged correctly
-            preferences: firestorePayload.preferences ? {
-                ...user.profile.preferences,
-                ...firestorePayload.preferences,
-                communication: firestorePayload.preferences.communication ? {
-                    ...user.profile.preferences?.communication,
-                    ...firestorePayload.preferences.communication,
-                } : user.profile.preferences?.communication,
-            } : user.profile.preferences,
-            // Ensure timestamps are present
-            updatedAt: serverTimestamp() as Timestamp, // This will be a sentinel locally
-          };
-
-
-          setUser(currentUser => currentUser ? ({
-            ...(updatedFirebaseUser as FirebaseUser), // Cast because we constructed it like a FirebaseUser
-            profile: optimisticallyUpdatedProfile
-          }) : null);
-
-          // Re-fetch from Firestore for definitive state after a short delay
-          // to allow server-side timestamp to be set and propagation.
+          // Optimistic update and re-fetch
           setTimeout(async () => {
-            if (auth.currentUser) {
+            if (auth.currentUser) { // Check again, as user might have logged out
                 const freshProfile = await fetchUserProfileData(auth.currentUser);
                 if (freshProfile) {
                     setUser(currUser => currUser ? ({
-                        ...auth.currentUser!, // Use the latest auth.currentUser
+                        ...auth.currentUser!, // Use the latest from auth.currentUser
                         profile: freshProfile
                     }) : null);
                 }
@@ -204,9 +195,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       toast({ title: "Profile Updated", description: "Your changes have been saved." });
     } catch (error: any) {
         console.error("Error updating profile:", error);
-        toast({ title: "Update Failed", description: "Could not save profile changes.", variant: "destructive" });
+        let description = "Could not save profile changes.";
+        if (error.code === 'auth/invalid-profile-attribute' && error.message.includes('photoURL')) {
+            description = "The photo URL provided was invalid or too long for the Firebase Auth profile. Your profile picture might not have updated on external services, but it is saved in the app.";
+        } else if (error.message) {
+            description = error.message;
+        }
+        toast({ title: "Update Failed", description, variant: "destructive" });
+        // Do not re-throw to prevent Next.js error overlay for handled errors
     }
-  }, [user, fetchUserProfileData]);
+  }, [user, fetchUserProfileData]); // Added user to dependency array
 
 
   useEffect(() => {
@@ -252,31 +250,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
           if (firestoreProfile) {
             effectiveProfile = {
-                ...firestoreProfile, // Spread existing Firestore data first
                 name: firestoreProfile.name || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
-                email: firestoreProfile.email || firebaseUser.email || '',
-                avatarUrl: firestoreProfile.avatarUrl || firebaseUser.photoURL,
-                preferences: { // Ensure preferences and communication sub-object exist with defaults
+                email: firestoreProfile.email || firebaseUser.email || '', 
+                avatarUrl: firestoreProfile.avatarUrl || firebaseUser.photoURL, // Prioritize Firestore, fallback to Auth
+                phone: firestoreProfile.phone || "",
+                preferences: { 
                     defaultVehiclePlate: firestoreProfile.preferences?.defaultVehiclePlate || "",
                     defaultVehicleMake: firestoreProfile.preferences?.defaultVehicleMake || "",
                     defaultVehicleModel: firestoreProfile.preferences?.defaultVehicleModel || "",
                     defaultVehicleColor: firestoreProfile.preferences?.defaultVehicleColor || "",
-                    requireCovered: firestoreProfile.preferences?.requireCovered === true, // Ensure boolean
-                    requireEVCharging: firestoreProfile.preferences?.requireEVCharging === true, // Ensure boolean
+                    requireCovered: firestoreProfile.preferences?.requireCovered === true,
+                    requireEVCharging: firestoreProfile.preferences?.requireEVCharging === true,
                     communication: {
                         bookingEmails: firestoreProfile.preferences?.communication?.bookingEmails !== undefined ? firestoreProfile.preferences.communication.bookingEmails : true,
-                        promotionalEmails: firestoreProfile.preferences?.communication?.promotionalEmails === true, // Ensure boolean
+                        promotionalEmails: firestoreProfile.preferences?.communication?.promotionalEmails === true,
                     }
                 },
-                createdAt: firestoreProfile.createdAt, // Keep existing if present
-                updatedAt: firestoreProfile.updatedAt, // Keep existing if present
+                createdAt: firestoreProfile.createdAt,
+                updatedAt: firestoreProfile.updatedAt,
             };
           } else {
             // Construct default profile if none exists in Firestore
             effectiveProfile = {
               name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
               email: firebaseUser.email || '', 
-              avatarUrl: firebaseUser.photoURL,
+              avatarUrl: firebaseUser.photoURL, // Use photoURL from auth if no profile
+              phone: "",
               preferences: {
                 defaultVehiclePlate: '',
                 defaultVehicleMake: '',
@@ -289,9 +288,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     promotionalEmails: false,
                 }
               },
-              // createdAt and updatedAt will be undefined for this default profile
-              // and will be set upon first save or if Google sign-in creates it.
+              // createdAt and updatedAt will be undefined, set on first save or Google sign-in if profile is created
             };
+             console.log("No Firestore profile found, created default in-memory profile:", effectiveProfile);
           }
           setUser({
               ...firebaseUser, 
@@ -368,6 +367,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       toast({ title: "Login Failed", description, variant: "destructive" });
       setUser(null);
+      // Do not re-throw
     } finally {
       setLoading(false);
     }
@@ -386,15 +386,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const userDocRef = doc(db, 'users', firebaseUser.uid);
       const userDocSnap = await getDoc(userDocRef);
 
-      let userProfileUpdates: Partial<UserProfile> = {};
       const now = serverTimestamp() as Timestamp;
 
       if (!userDocSnap.exists()) {
         console.log("loginWithGoogle: New user. Creating Firestore profile for:", firebaseUser.uid);
-        userProfileUpdates = {
+        const newProfile: UserProfile = {
           name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
           email: firebaseUser.email || '',
           avatarUrl: firebaseUser.photoURL,
+          phone: firebaseUser.phoneNumber || "", // Usually not available from Google
           createdAt: now,
           updatedAt: now,
           preferences: { 
@@ -403,22 +403,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             communication: { bookingEmails: true, promotionalEmails: false } 
           }
         };
-        await setDoc(userDocRef, userProfileUpdates);
+        await setDoc(userDocRef, newProfile);
       } else {
         const existingProfile = userDocSnap.data() as UserProfile;
-        let needsFirestoreUpdate = false;
         const updatesForFirestore: Partial<UserProfile> = {};
+        let needsFirestoreUpdate = false;
 
         if (firebaseUser.displayName && firebaseUser.displayName !== existingProfile.name) {
             updatesForFirestore.name = firebaseUser.displayName;
             needsFirestoreUpdate = true;
         }
+        // Only update Firestore avatarUrl if Google's photoURL is different and not null.
+        // If Google's photoURL is null, we keep the existing Firestore avatarUrl.
         if (firebaseUser.photoURL && firebaseUser.photoURL !== existingProfile.avatarUrl) {
             updatesForFirestore.avatarUrl = firebaseUser.photoURL;
             needsFirestoreUpdate = true;
         }
         if (firebaseUser.email && firebaseUser.email !== existingProfile.email) {
-            updatesForFirestore.email = firebaseUser.email;
+            updatesForFirestore.email = firebaseUser.email; // Email usually doesn't change but good to check
             needsFirestoreUpdate = true;
         }
         if (needsFirestoreUpdate) {
@@ -450,8 +452,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         case 'auth/popup-blocked':
           description = "Google Sign-In popup was blocked by the browser. Please allow popups for this site and try again.";
           break;
+        case 'auth/operation-not-allowed': // This can also mean Google Sign-in is not enabled
+           description = "Google Sign-In is not configured correctly for this app. Please ensure it's enabled in your Firebase project console (Authentication -> Sign-in method) and that your project's OAuth settings are correctly set up in Google Cloud Console.";
+           break;
         case 'auth/configuration-not-found':
-        case 'auth/operation-not-allowed':
           description = "Google Sign-In is not configured correctly for this app. Please ensure it's enabled in your Firebase project console (Authentication -> Sign-in method) and that your project's OAuth settings are correctly set up in Google Cloud Console.";
           break;
         case 'auth/unauthorized-domain':
@@ -465,6 +469,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       toast({ title: "Google Login Failed", description, variant: "destructive" });
       setUser(null);
+      // Do not re-throw
     } finally {
       setLoading(false);
     }
@@ -501,7 +506,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const userProfileData: UserProfile = {
         name: name,
         email: firebaseUser.email || '',
-        avatarUrl: firebaseUser.photoURL, // Will be null initially
+        avatarUrl: firebaseUser.photoURL, 
+        phone: "",
         createdAt: now,
         updatedAt: now,
         preferences: { 
@@ -551,6 +557,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       toast({ title: "Signup Failed", description, variant: "destructive" });
       setUser(null);
+      // Do not re-throw
     } finally {
       setLoading(false);
     }
@@ -569,6 +576,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       toast({ title: "Logged Out", description: "You have been successfully logged out." });
     } catch (error: any) {
       toast({ title: "Logout Failed", description: error.message || "An unexpected error occurred.", variant: "destructive" });
+      // Do not re-throw
     } finally {
       setLoading(false);
     }
@@ -596,6 +604,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         description = error.message;
       }
       toast({ title: "Error Sending Reset Email", description, variant: "destructive" });
+      // Do not re-throw
     } finally {
       setLoading(false);
     }
@@ -623,6 +632,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         description = error.message;
       }
       toast({ title: "Password Reset Failed", description, variant: "destructive" });
+      // Do not re-throw
     } finally {
       setLoading(false);
     }
