@@ -22,6 +22,8 @@ export function ParkingSlotCard({ space }: ParkingSlotCardProps) {
   const router = useRouter();
 
   const isFallbackSlot = space.id.startsWith('fallback-slot-');
+  // Determine if it's one of the hardcoded mock slots that have actual static pages
+  const isStaticMockSlot = space.id === 'ps1' || space.id === 'ps2'; 
   const isBookable = !isFallbackSlot && !space.isOccupied;
 
   const cardBgColor = space.isOccupied ? 'bg-red-500/10 hover:bg-red-500/20' : 'bg-green-500/10 hover:bg-green-500/20';
@@ -38,38 +40,57 @@ export function ParkingSlotCard({ space }: ParkingSlotCardProps) {
   };
 
   const handleBookNowClick = (e: React.MouseEvent) => {
-    // This function is primarily for the auth check when the button is a Link.
-    // For disabled/fallback buttons, the click might not even occur if truly disabled,
-    // but this provides a fallback.
     e.stopPropagation(); // Prevent card click if button itself handles it.
 
     if (isFallbackSlot) {
-        toast({
-            title: "Demo Slot",
-            description: "Fallback slots are for demonstration and cannot be booked.",
-            variant: "default"
-        });
+        toast({ title: "Demo Slot", description: "Fallback slots are for demonstration and cannot be booked.", variant: "default" });
         return;
     }
     if (space.isOccupied) {
-         toast({
-            title: "Slot Occupied",
-            description: "This slot is currently occupied and cannot be booked.",
-            variant: "default"
-        });
+         toast({ title: "Slot Occupied", description: "This slot is currently occupied and cannot be booked.", variant: "default" });
         return;
     }
 
+    let redirectUrl = `/booking/${isStaticMockSlot ? space.id : 'ps_ai_slot_booking'}`;
+    const queryParams = new URLSearchParams();
+
+    if (!isStaticMockSlot) { // It's an AI-generated slot, pass details
+        queryParams.set('id', space.id);
+        queryParams.set('slotLabel', space.slotLabel);
+        queryParams.set('floorLevel', space.floorLevel);
+        queryParams.set('slotType', space.slotType);
+        queryParams.set('facilityName', space.facilityName);
+        queryParams.set('facilityAddress', space.facilityAddress);
+        if (space.facilityCoordinates) {
+            queryParams.set('lat', String(space.facilityCoordinates.lat));
+            queryParams.set('lng', String(space.facilityCoordinates.lng));
+        }
+        if (space.pricePerHour !== undefined) {
+            queryParams.set('price', String(space.pricePerHour));
+        }
+        if (space.imageUrl) queryParams.set('imageUrl', space.imageUrl);
+        if (space.dataAiHint) queryParams.set('dataAiHint', space.dataAiHint);
+        if (space.facilityRating !== undefined) queryParams.set('rating', String(space.facilityRating));
+    }
+    
+    const queryString = queryParams.toString();
+    if (queryString) {
+        redirectUrl += `?${queryString}`;
+    }
+    
     if (!isAuthenticated && !authLoading) {
-      toast({
-        title: "Login Required",
-        description: "Please log in to book a parking slot.",
-        variant: "destructive"
-      });
-      router.push(`/login?redirect=/booking/${space.id}`);
+      toast({ title: "Login Required", description: "Please log in to book a parking slot.", variant: "destructive" });
+      router.push(`/login?redirect=${encodeURIComponent(redirectUrl)}`);
       return;
     }
-    // If authenticated, the Link component will handle navigation.
+    
+    // If authenticated, Link component will handle navigation for static mocks,
+    // or router.push for AI slots using the generic page.
+    if (isStaticMockSlot) {
+        // Link component will handle this case
+    } else {
+        router.push(redirectUrl);
+    }
   };
 
   const bookNowButtonContent = (
@@ -84,19 +105,11 @@ export function ParkingSlotCard({ space }: ParkingSlotCardProps) {
         <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant="default"
-                size="sm"
-                className="w-full mt-2 text-xs h-8"
-                disabled={true}
-                onClick={handleBookNowClick} // Still useful for toast
-              >
+              <Button variant="default" size="sm" className="w-full mt-2 text-xs h-8" disabled={true} onClick={handleBookNowClick} >
                 {bookNowButtonContent}
               </Button>
             </TooltipTrigger>
-            <TooltipContent>
-              <p>Fallback slots are for demo and cannot be booked.</p>
-            </TooltipContent>
+            <TooltipContent><p>Fallback slots are for demo and cannot be booked.</p></TooltipContent>
           </Tooltip>
         </TooltipProvider>
       );
@@ -104,38 +117,35 @@ export function ParkingSlotCard({ space }: ParkingSlotCardProps) {
 
     if (space.isOccupied) {
       return (
-        <Button
-          variant="default"
-          size="sm"
-          className="w-full mt-2 text-xs h-8"
-          disabled={true}
-          onClick={handleBookNowClick} // Still useful for toast
-        >
+        <Button variant="default" size="sm" className="w-full mt-2 text-xs h-8" disabled={true} onClick={handleBookNowClick} >
           {bookNowButtonContent}
         </Button>
       );
     }
 
-    // Available and not fallback: render Link-wrapped Button
-    return (
-      <Button
-        variant="default"
-        size="sm"
-        className="w-full mt-2 text-xs h-8"
-        asChild
-        onClick={(e) => { // Handle auth check before Link navigates
-            if (!isAuthenticated && !authLoading) {
-                e.preventDefault(); // Prevent Link navigation
-                handleBookNowClick(e); // Trigger auth check and redirect
-            }
-            // If authenticated, Link will proceed.
-        }}
-      >
-        <Link href={`/booking/${space.id}`}>
-          {bookNowButtonContent}
-        </Link>
-      </Button>
-    );
+    // Available and not fallback:
+    if (isStaticMockSlot) { // For ps1, ps2, use direct Link
+        return (
+            <Button variant="default" size="sm" className="w-full mt-2 text-xs h-8" asChild
+                onClick={(e) => { 
+                    if (!isAuthenticated && !authLoading) {
+                        e.preventDefault(); 
+                        handleBookNowClick(e); 
+                    }
+                }}
+            >
+                <Link href={`/booking/${space.id}`}>
+                    {bookNowButtonContent}
+                </Link>
+            </Button>
+        );
+    } else { // For AI-generated slots, button calls handleBookNowClick which uses router.push
+        return (
+            <Button variant="default" size="sm" className="w-full mt-2 text-xs h-8" onClick={handleBookNowClick}>
+                {bookNowButtonContent}
+            </Button>
+        );
+    }
   };
   
   const cardContent = (

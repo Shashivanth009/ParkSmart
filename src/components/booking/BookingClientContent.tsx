@@ -1,7 +1,7 @@
 
 "use client";
 import { useEffect, useState } from 'react';
-import { useRouter, usePathname } from 'next/navigation'; // Removed useParams as spaceId is now a prop
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { Header } from '@/components/core/Header';
 import { Footer } from '@/components/core/Footer';
 import { PageTitle } from '@/components/core/PageTitle';
@@ -9,23 +9,24 @@ import { BookingForm } from '@/components/booking/BookingForm';
 import type { ParkingSpace, ParkingFeature } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Image from 'next/image';
-import { MapPin, DollarSign, Users, Star, Car as CarIconLucide, Loader2 } from 'lucide-react'; // Renamed Car to avoid conflict
+import { MapPin, DollarSign, Users, Star, Car as CarIconLucide, Loader2 } from 'lucide-react';
 import { featureIcons, featureLabels } from '@/types';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
 
-// Mock data needed for fetchSpaceDetails within this client component
+// Mock data needed for fetchSpaceDetails fallback within this client component
 const mockSpacesData: ParkingSpace[] = [
     { id: 'ps1', facilityName: 'City Center Parking', facilityAddress: '123 Main St, Anytown', availability: 'high', pricePerHour: 2.5, features: ['covered', 'ev-charging', 'cctv'], facilityCoordinates: { lat: 28.6139, lng: 77.2090 }, facilityRating: 4.5, availableSpots: 50, totalSpots: 100, imageUrl: 'https://placehold.co/800x450.png', slotLabel: 'N/A', floorLevel: 'N/A', isOccupied: false, slotType: 'standard', dataAiHint: "parking garage entrance"},
     { id: 'ps2', facilityName: 'Downtown Garage', facilityAddress: '456 Oak Ave, Anytown', availability: 'medium', pricePerHour: 3.0, features: ['cctv', 'secure'], facilityCoordinates: { lat: 28.6150, lng: 77.2100 }, facilityRating: 4.2, availableSpots: 20, totalSpots: 80, imageUrl: 'https://placehold.co/800x450.png', slotLabel: 'N/A', floorLevel: 'N/A', isOccupied: false, slotType: 'standard', dataAiHint: "modern parking structure" },
+    { id: 'ps_ai_slot_booking', facilityName: 'AI Generated Slot', facilityAddress: 'Details from AI', availability: 'high', pricePerHour: 0, features: [], facilityCoordinates: { lat: 0, lng: 0 }, facilityRating: 0, availableSpots: 0, totalSpots: 0, imageUrl: 'https://placehold.co/800x450.png', slotLabel: 'AI', floorLevel: 'AI', isOccupied: false, slotType: 'standard', dataAiHint: "placeholder image" },
 ];
 
-// fetchSpaceDetails remains here as it's used by client-side logic
-const fetchSpaceDetails = async (spaceId: string): Promise<ParkingSpace | null> => {
-  console.log("Fetching details for space:", spaceId);
+// fetchSpaceDetails remains here as it's used by client-side logic for ps1, ps2
+const fetchSpaceDetailsFromMock = async (spaceId: string): Promise<ParkingSpace | null> => {
+  console.log("Fetching details for mock space:", spaceId);
   // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 500));
+  await new Promise(resolve => setTimeout(resolve, 100)); // shorter delay for mock
   return mockSpacesData.find(s => s.id === spaceId) || null;
 };
 
@@ -47,9 +48,9 @@ interface BookingClientContentProps {
 export function BookingClientContent({ spaceIdFromParams }: BookingClientContentProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { user, isAuthenticated, loading: authLoading } = useAuth();
-  const spaceId = spaceIdFromParams; 
-
+  
   const [space, setSpace] = useState<ParkingSpace | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [userDefaultVehiclePlate, setUserDefaultVehiclePlate] = useState<string | null | undefined>(undefined);
@@ -57,45 +58,79 @@ export function BookingClientContent({ spaceIdFromParams }: BookingClientContent
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       toast({ title: "Login Required", description: "Please log in to book a parking space.", variant: "destructive" });
-      router.push(`/login?redirect=${encodeURIComponent(pathname)}`);
+      router.push(`/login?redirect=${encodeURIComponent(pathname + '?' + searchParams.toString())}`);
       return;
     }
 
-    if (isAuthenticated && spaceId) { 
+    if (isAuthenticated) { 
       setIsLoading(true);
-      fetchSpaceDetails(spaceId)
-        .then(data => {
-          setSpace(data);
-        })
-        .catch(err => {
-          console.error("Failed to fetch space details:", err);
-          toast({title: "Error", description: "Could not load parking space details.", variant: "destructive"});
-        }).finally(() => {
-            setIsLoading(false);
-        });
-    } else if (!spaceId) { 
+      const loadSpaceData = async () => {
+        let spaceData: ParkingSpace | null = null;
+        if (spaceIdFromParams === 'ps_ai_slot_booking') {
+          console.log("Processing AI slot booking from query params");
+          const qpId = searchParams.get('id');
+          const qpSlotLabel = searchParams.get('slotLabel');
+          const qpFloorLevel = searchParams.get('floorLevel');
+          const qpSlotType = searchParams.get('slotType') as ParkingSpace['slotType'];
+          const qpFacilityName = searchParams.get('facilityName');
+          const qpFacilityAddress = searchParams.get('facilityAddress');
+          const qpLat = searchParams.get('lat');
+          const qpLng = searchParams.get('lng');
+          const qpPrice = searchParams.get('price');
+          const qpImageUrl = searchParams.get('imageUrl') || 'https://placehold.co/800x450.png';
+          const qpDataAiHint = searchParams.get('dataAiHint') || 'parking area';
+          const qpRating = searchParams.get('rating');
+          // features are not easily passed via query string, would need more complex parsing or be omitted for AI slots here
+
+          if (qpId && qpSlotLabel && qpFacilityName && qpFacilityAddress && qpLat && qpLng && qpPrice && qpSlotType) {
+            spaceData = {
+              id: qpId,
+              slotLabel: qpSlotLabel,
+              floorLevel: qpFloorLevel || 'N/A',
+              isOccupied: false, // AI slots passed for booking should be available
+              slotType: qpSlotType,
+              facilityName: qpFacilityName,
+              facilityAddress: qpFacilityAddress,
+              facilityCoordinates: { lat: parseFloat(qpLat), lng: parseFloat(qpLng) },
+              pricePerHour: parseFloat(qpPrice),
+              imageUrl: qpImageUrl,
+              dataAiHint: qpDataAiHint,
+              facilityRating: qpRating ? parseFloat(qpRating) : undefined,
+              features: [], // Simplification for now
+            };
+          } else {
+            toast({title: "AI Slot Error", description: "Could not load all details for the AI-generated slot.", variant: "destructive"});
+          }
+        } else {
+          spaceData = await fetchSpaceDetailsFromMock(spaceIdFromParams);
+        }
+        
+        setSpace(spaceData);
         setIsLoading(false);
-        toast({title: "Invalid Space", description: "No parking space ID provided.", variant: "destructive"});
-        router.push('/search');
+        if (!spaceData) {
+            toast({title: "Invalid Space", description: "Parking space details could not be loaded.", variant: "destructive"});
+            router.push('/search');
+        }
+      };
+      loadSpaceData();
     }
     
     if(user && user.profile?.preferences) {
         setUserDefaultVehiclePlate(user.profile.preferences.defaultVehiclePlate);
     }
 
-  }, [spaceId, isAuthenticated, authLoading, router, user, pathname]);
+  }, [spaceIdFromParams, isAuthenticated, authLoading, router, user, pathname, searchParams]);
 
   const handleBookingSubmit = (formData: any, totalCost: number, endTime: Date) => {
     if (!space) {
         toast({title: "Booking Error", description: "Parking space details are missing.", variant: "destructive"});
         return;
     }
-    console.log("Booking form submitted, proceeding to payment:", { ...formData, spaceId, totalCost, endTime });
+    console.log("Booking form submitted, proceeding to payment:", { ...formData, spaceId: space.id, totalCost, endTime });
     toast({ title: "Proceeding to Payment", description: `Review your booking for ${space.facilityName}. Total: $${totalCost.toFixed(2)}` });
     
-    const mockBookingId = `bk_${Date.now()}`; // This is a temporary mock ID
+    const mockBookingId = `bk_${space.id}_${Date.now()}`; 
     
-    // Construct query parameters for the payment page
     const paymentQueryParams = new URLSearchParams();
     paymentQueryParams.set('facilityName', space.facilityName);
     paymentQueryParams.set('facilityAddress', space.facilityAddress);
@@ -176,8 +211,8 @@ export function BookingClientContent({ spaceIdFromParams }: BookingClientContent
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
                     {space.pricePerHour !== undefined && <div className="flex items-center"><DollarSign className="w-5 h-5 mr-2 text-primary icon-glow-primary" /> Price: <strong>${space.pricePerHour.toFixed(2)}/hr</strong></div>}
-                    {space.availableSpots !== undefined && space.totalSpots !== undefined && <div className="flex items-center"><Users className="w-5 h-5 mr-2 text-primary icon-glow-primary" /> Capacity: <strong className={`ml-1 ${availabilityColor}`}>{space.availableSpots}/{space.totalSpots} free</strong></div>}
-                    {space.facilityRating && <div className="flex items-center"><Star className="w-5 h-5 mr-2 text-yellow-400 icon-glow" /> Rating: <strong>{space.facilityRating.toFixed(1)}/5</strong></div>}
+                    {space.availableSpots !== undefined && space.totalSpots !== undefined && space.availability && <div className="flex items-center"><Users className="w-5 h-5 mr-2 text-primary icon-glow-primary" /> Capacity: <strong className={`ml-1 ${availabilityColor}`}>{space.availability} ({space.availableSpots}/{space.totalSpots} free)</strong></div>}
+                    {space.facilityRating !== undefined && <div className="flex items-center"><Star className="w-5 h-5 mr-2 text-yellow-400 icon-glow" /> Rating: <strong>{space.facilityRating.toFixed(1)}/5</strong></div>}
                 </div>
                  {space.features && space.features.length > 0 && (
                     <>
@@ -187,6 +222,7 @@ export function BookingClientContent({ spaceIdFromParams }: BookingClientContent
                         </div>
                     </>
                  )}
+                 <div className="text-xs text-muted-foreground">Slot Type: {space.slotType}, Label: {space.slotLabel}, Floor: {space.floorLevel}</div>
               </CardContent>
             </Card>
           </div>
