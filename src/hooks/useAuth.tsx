@@ -231,9 +231,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       let description = "An unexpected error occurred during login.";
       switch (error.code) {
         case 'auth/invalid-credential':
-        case 'auth/user-not-found':
-        case 'auth/wrong-password':
           description = "Invalid email or password. Please try again.";
+          break;
+        case 'auth/user-not-found':
+          description = "No account found with this email. Please sign up or check the email address.";
+          break;
+        case 'auth/wrong-password':
+          description = "Incorrect password. Please try again or reset your password.";
           break;
         case 'auth/user-disabled':
           description = "This account has been disabled. Please contact support.";
@@ -242,7 +246,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           description = "Access to this account has been temporarily disabled due to many failed login attempts. You can immediately restore it by resetting your password or you can try again later.";
           break;
         case 'auth/configuration-not-found':
-          description = "Firebase configuration error. Please check `src/lib/firebase.ts` and your Firebase project settings.";
+          description = "Firebase configuration error. Please check `src/lib/firebase.ts` and your Firebase project settings in the Firebase console (ensure Email/Password sign-in is enabled).";
           break;
         case 'auth/network-request-failed':
             description = "Network error. Please check your internet connection and try again.";
@@ -252,7 +256,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       toast({ title: "Login Failed", description, variant: "destructive" });
       setUser(null); 
-      throw error; // Re-throw to be caught by form if needed
+      throw error; 
     } finally {
       setLoading(false);
     }
@@ -345,7 +349,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           description = "Google Sign-In popup was blocked by the browser. Please allow popups for this site.";
           break;
         case 'auth/configuration-not-found':
-          description = "Firebase configuration error for Google Sign-In. Check `src/lib/firebase.ts` and Firebase project.";
+          description = "Firebase configuration error for Google Sign-In. Check `src/lib/firebase.ts` and ensure Google Sign-In is enabled with correct OAuth setup in your Firebase console.";
           break;
         case 'auth/network-request-failed':
             description = "Network error. Please check your internet connection and try again.";
@@ -355,7 +359,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       toast({ title: "Google Login Failed", description, variant: "destructive" });
       setUser(null);
-      throw error; // Re-throw to be caught by form if needed
+      throw error;
     } finally {
       setLoading(false);
     }
@@ -427,7 +431,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           description = "The email address is not valid. Please enter a correct email.";
           break;
         case 'auth/operation-not-allowed':
-          description = "Email/password accounts are not enabled. Please contact support.";
+          description = "Email/Password sign-in is not enabled in your Firebase project. Please enable it in Firebase Console: Authentication -> Sign-in method.";
           break;
         case 'auth/weak-password':
           description = "The password is too weak. Please choose a stronger password.";
@@ -448,7 +452,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       toast({ title: "Signup Failed", description, variant: "destructive" });
       setUser(null); 
-      throw error; // Re-throw to be caught by form if needed
+      throw error; 
     } finally {
       setLoading(false);
     }
@@ -491,6 +495,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       let description = "Could not send reset email.";
       if (error.code === 'auth/user-not-found') {
         description = "No account found with this email address.";
+      } else if (error.code === 'auth/configuration-not-found') {
+        description = "Firebase configuration error for password reset. Check `src/lib/firebase.ts` and Firebase console settings.";
       } else if (error.message) {
         description = error.message;
       }
@@ -518,6 +524,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       let description = "Failed to reset password.";
       if (error.code === 'auth/invalid-action-code') {
         description = "The password reset link is invalid or has expired. Please request a new one.";
+      } else if (error.code === 'auth/configuration-not-found') {
+        description = "Firebase configuration error for password reset. Check `src/lib/firebase.ts` and Firebase console settings.";
       } else if (error.message) {
         description = error.message;
       }
