@@ -8,7 +8,7 @@ import { PageTitle } from '@/components/core/PageTitle';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import type { Booking, ParkingSpace } from '@/types';
-import { MapPin, CalendarDays, Clock, Car, CircleDollarSign, Navigation, Timer, Loader2, AlertTriangle, QrCode } from 'lucide-react';
+import { MapPin, CalendarDays, Clock, Car, CircleDollarSign, Navigation, Timer, Loader2, AlertTriangle, QrCode, CheckCircle2 } from 'lucide-react';
 import { format, differenceInMinutes, intervalToDuration, isPast, isFuture } from 'date-fns';
 import { ExtendParkingForm } from '@/components/booking/ExtendParkingForm';
 import { Progress } from '@/components/ui/progress';
