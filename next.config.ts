@@ -2,7 +2,7 @@
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
-  output: 'export', // Add this line for static export
+  output: 'standalone', // Changed from 'export' for better deployment compatibility
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -18,7 +18,6 @@ const nextConfig: NextConfig = {
         pathname: '/**',
       },
     ],
-    unoptimized: true, // Required for static export with next/image
   },
   experimental: {
     allowedDevOrigins: [
@@ -28,5 +27,3 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
-
-    
