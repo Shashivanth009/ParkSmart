@@ -112,6 +112,7 @@ function PaymentPageComponentInternal() {
 
     // Redirect to confirmation page, passing through the original booking details
     const confirmationQueryParams = new URLSearchParams();
+    confirmationQueryParams.set('bookingId', bookingDetails.bookingId);
     confirmationQueryParams.set('facilityName', bookingDetails.facilityName);
     confirmationQueryParams.set('facilityAddress', bookingDetails.facilityAddress);
     confirmationQueryParams.set('startTime', bookingDetails.startTime);
@@ -120,12 +121,8 @@ function PaymentPageComponentInternal() {
     if (bookingDetails.vehiclePlate) {
       confirmationQueryParams.set('vehiclePlate', bookingDetails.vehiclePlate);
     }
-    // Add spaceName and address too, if confirmation page uses them specifically
-    confirmationQueryParams.set('spaceName', bookingDetails.facilityName); 
-    confirmationQueryParams.set('address', bookingDetails.facilityAddress);
 
-
-    router.push(`/booking/confirmation/${bookingDetails.bookingId}?${confirmationQueryParams.toString()}`);
+    router.push(`/booking/confirmation?${confirmationQueryParams.toString()}`);
   }
 
   const handleExpiryDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
