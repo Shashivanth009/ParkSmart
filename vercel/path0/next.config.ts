@@ -1,8 +1,6 @@
-
-import type {NextConfig} from 'next';
+import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  output: 'standalone', // Re-added for better deployment compatibility
   typescript: {
     ignoreBuildErrors: true,
   },
