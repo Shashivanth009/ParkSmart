@@ -1,7 +1,7 @@
 
 "use client";
 import { useEffect, useState, Suspense } from 'react';
-import { useParams, useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -46,7 +46,6 @@ const paymentFormSchema = z.object({
 type PaymentFormValues = z.infer<typeof paymentFormSchema>;
 
 function PaymentPageComponentInternal() {
-  const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -65,7 +64,7 @@ function PaymentPageComponentInternal() {
   });
   
   useEffect(() => {
-    const bookingId = params.bookingId as string;
+    const bookingId = searchParams.get('bookingId');
     const facilityName = searchParams.get('facilityName');
     const facilityAddress = searchParams.get('facilityAddress');
     const startTime = searchParams.get('startTime');
@@ -94,7 +93,7 @@ function PaymentPageComponentInternal() {
       vehiclePlate: vehiclePlate || undefined,
     });
     setIsLoading(false);
-  }, [params, searchParams, router]);
+  }, [searchParams, router]);
 
   async function onSubmit(values: PaymentFormValues) {
     if (!bookingDetails) return;

@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { MapPin, CalendarDays, Clock, Car, CircleDollarSign, Ban, CheckCircle2, AlertTriangle, MoreHorizontal } from 'lucide-react';
+import { MapPin, CalendarDays, Clock, Car, CircleDollarSign, Ban, CheckCircle2, AlertTriangle, MoreHorizontal, Loader2 } from 'lucide-react';
 
 const mockBookings: Booking[] = [
   { id: 'b1', spaceId: 'ps1', facilityName: 'City Center Parking', facilityAddress: '123 Main St, Anytown', startTime: new Date(Date.now() + 3600000 * 2).toISOString(), endTime: new Date(Date.now() + 3600000 * 4).toISOString(), totalCost: 7.50, status: 'upcoming', vehiclePlate: 'UPC 001' },
@@ -63,7 +63,7 @@ const BookingItemCard = ({ booking }: { booking: Booking }) => (
     <CardFooter className="flex justify-end gap-2">
       {(booking.status === 'upcoming' || booking.status === 'active') && (
         <Button size="sm" asChild className="bg-primary hover:bg-primary/90">
-            <Link href={`/manage-parking/${booking.id}`}>
+            <Link href={`/manage-parking?bookingId=${booking.id}`}>
                 <MoreHorizontal className="mr-2 h-4 w-4"/> Manage
             </Link>
         </Button>
@@ -138,4 +138,3 @@ export default function BookingsPage() {
     </div>
   );
 }
-

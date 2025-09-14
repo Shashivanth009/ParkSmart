@@ -122,7 +122,7 @@ export default function DashboardPage() {
                 </CardContent>
                 <CardFooter>
                   <Button variant="default" asChild>
-                    <Link href={`/manage-parking/${booking.id}`}>
+                    <Link href={`/manage-parking?bookingId=${booking.id}`}>
                         <MoreHorizontal className="mr-2 h-4 w-4"/> Manage Booking
                     </Link>
                   </Button>
