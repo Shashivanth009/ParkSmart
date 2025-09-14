@@ -132,6 +132,7 @@ export function BookingClientContent({ spaceIdFromParams }: BookingClientContent
     const mockBookingId = `bk_${space.id}_${Date.now()}`; 
     
     const paymentQueryParams = new URLSearchParams();
+    paymentQueryParams.set('bookingId', mockBookingId);
     paymentQueryParams.set('facilityName', space.facilityName);
     paymentQueryParams.set('facilityAddress', space.facilityAddress);
     paymentQueryParams.set('startTime', formData.date.toISOString()); 
@@ -141,7 +142,7 @@ export function BookingClientContent({ spaceIdFromParams }: BookingClientContent
       paymentQueryParams.set('vehiclePlate', formData.vehiclePlate);
     }
     
-    router.push(`/booking/payment/${mockBookingId}?${paymentQueryParams.toString()}`);
+    router.push(`/booking/payment?${paymentQueryParams.toString()}`);
   };
 
   if (authLoading || isLoading) {
