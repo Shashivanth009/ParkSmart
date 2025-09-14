@@ -1,0 +1,19 @@
+{
+  "projects": {
+    "default": "parksmart-q73kd"
+  },
+  "emulators": {
+    "hosting": {
+      "port": 9002
+    }
+  },
+  "frameworks": {
+    "next": {
+      "env": {
+        "development": {
+          "NODE_ENV": "development"
+        }
+      }
+    }
+  }
+}
