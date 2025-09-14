@@ -1,7 +1,7 @@
 
 "use client";
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Header } from '@/components/core/Header';
 import { Footer } from '@/components/core/Footer';
 import { PageTitle } from '@/components/core/PageTitle';
@@ -47,13 +47,11 @@ const fetchBookingAndSpaceDetails = async (bookingId: string): Promise<{ booking
   return { booking, space };
 };
 
-interface ManageParkingClientContentProps {
-  bookingIdFromParams: string;
-}
 
-export function ManageParkingClientContent({ bookingIdFromParams }: ManageParkingClientContentProps) {
+export function ManageParkingClientContent() {
   const router = useRouter();
-  const bookingId = bookingIdFromParams;
+  const searchParams = useSearchParams();
+  const bookingId = searchParams.get('bookingId');
 
   const [booking, setBooking] = useState<Booking | null>(null);
   const [space, setSpace] = useState<ParkingSpace | null>(null);
@@ -76,6 +74,8 @@ export function ManageParkingClientContent({ bookingIdFromParams }: ManageParkin
         }).finally(() => {
             setIsLoading(false);
         });
+    } else {
+        setIsLoading(false);
     }
   }, [bookingId]);
 
@@ -169,6 +169,19 @@ export function ManageParkingClientContent({ bookingIdFromParams }: ManageParkin
 
   if (isLoading) { 
     return <div className="flex h-screen items-center justify-center"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
+  }
+  
+  if (!bookingId) {
+    return (
+        <div className="flex flex-col min-h-screen">
+            <Header />
+            <main className="flex-grow container mx-auto px-4 md:px-6 py-8 text-center">
+                <PageTitle title="Invalid Request" description="No booking ID was provided in the URL." />
+                <Button onClick={() => router.push('/dashboard/bookings')}>View My Bookings</Button>
+            </main>
+            <Footer />
+        </div>
+    );
   }
 
   if (!booking || !space) {
